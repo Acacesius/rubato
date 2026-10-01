@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script>/* Works at / or under a path prefix (e.g. /rubato/): every URL below resolves against the app root. */
+(function () { var b = document.createElement("base"); b.href = location.pathname.replace(/\/(host|speaker|setup)?\/?$/, "") + "/"; document.head.appendChild(b); })();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#110D0E">
+<meta name="referrer" content="no-referrer">
+<title>rubato</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -11 38 38'%3E%3Cpath d='M2 8 C4 2, 6 2, 8 8 S12 14, 15 8 S21 2, 25 8 S33 14, 36 8' fill='none' stroke='%23F2506A' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="static/fonts/bricolage-grotesque-latin-opsz-wdth-wght.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="static/rubato.css">
+</head>
+<body>
+
+<!-- Join -->
+<form id="join" class="join" autocomplete="off" novalidate>
+  <h1 class="wordmark" style="margin-bottom:0">rubato<svg viewBox="0 0 38 16" aria-hidden="true"><path d="M2 8 C4 2, 6 2, 8 8 S12 14, 15 8 S21 2, 25 8 S33 14, 36 8"/></svg></h1>
+  <p class="tagline">One speaker. Everyone's hands on it.</p>
+  <div class="card teaser" id="teaser" aria-live="polite"></div>
+  <div class="field" style="margin-top:28px">
+    <span class="label" id="code-label">Room code</span>
+    <div class="codeboxes" id="codeboxes" role="group" aria-labelledby="code-label"></div>
+  </div>
+  <label class="field" style="margin-top:20px">
+    <span class="label">Your name</span>
+    <input id="name-input" class="textin" placeholder="Shown to the room" maxlength="20" autocomplete="nickname" required>
+  </label>
+  <button class="go" id="join-btn">Grab the aux<span id="join-arrow" style="display:contents"></span></button>
+  <div id="join-err" class="err" role="alert"></div>
+  <p class="foot">No app. No account. The music plays on the speaker.</p>
+</form>
+
+<!-- Room -->
+<div id="room" class="app hidden">
+  <div id="notice" class="notice hidden" role="alert"></div>
+
+  <!-- Speaker (the remote) -->
+  <header data-for="speaker">
+    <span class="wordmark">rubato<svg viewBox="0 0 38 16" aria-hidden="true"><path d="M2 8 C4 2, 6 2, 8 8 S12 14, 15 8 S21 2, 25 8 S33 14, 36 8"/></svg></span>
+    <span id="sp-pill" class="pill spill off" role="status"></span>
+  </header>
+  <section class="view remote" data-view="speaker" aria-label="Speaker remote">
+    <div id="cone-slot"></div>
+    <div class="label red by" id="by"></div>
+    <h2 class="display np-title ellip" id="np-title">Nothing playing</h2>
+    <p class="np-sub ellip" id="np-sub">Search for a song to get the room going</p>
+    <div id="prog-slot" style="width:100%"></div>
+    <div class="ctlrow">
+      <button class="big red" id="pause" aria-label="Pause" disabled></button>
+      <div id="dial-slot"></div>
+      <button class="big dark" id="skip" aria-label="Skip song" disabled></button>
+    </div>
+    <div class="volrow">
+      <label class="label" for="vol"><span>Speaker volume</span><span class="mono" id="vol-v" style="color:var(--text)"></span></label>
+      <input id="vol" type="range" min="0" max="80" value="60" step="1">
+    </div>
+    <div id="last-hand" style="margin-top:8px;max-width:100%"></div>
+  </section>
+
+  <!-- Queue -->
+  <header data-for="queue" class="hidden">
+    <h1 class="display">Queue</h1>
+    <span class="pill mono" id="q-count"></span>
+  </header>
+  <section class="view hidden" data-view="queue" aria-label="Queue">
+    <div class="card pinned hidden" id="q-now"></div>
+    <div class="label qhead" id="q-head">Up next</div>
+    <div class="rows" id="queue"></div>
+    <div id="radio-block">
+      <div class="radio-div"><span id="radio-div"></span></div>
+      <div class="rows faded" id="auto"></div>
+    </div>
+  </section>
+
+  <!-- Search -->
+  <header data-for="search" class="search-head hidden">
+    <form id="search-form" class="searchfield" role="search" autocomplete="off">
+      <span id="s-ic" style="display:contents"></span>
+      <input id="q" type="search" placeholder="Songs, albums, playlists or a link" enterkeyhint="search" aria-label="Search songs, albums and playlists">
+      <button type="button" class="clear hidden" id="q-clear" aria-label="Clear search"></button>
+    </form>
+  </header>
+  <section class="view hidden" data-view="search" aria-label="Search">
+    <div id="s-results-view">
+      <div class="chips" role="group" aria-label="Filter">
+        <button class="chip" data-kind="all" aria-pressed="true">All</button>
+        <button class="chip" data-kind="songs" aria-pressed="false">Songs</button>
+        <button class="chip" data-kind="albums" aria-pressed="false">Albums</button>
+        <button class="chip" data-kind="playlists" aria-pressed="false">Playlists</button>
+      </div>
+      <div id="results"><div class="empty">Search YouTube Music, or paste a link.</div></div>
+    </div>
+    <div id="s-coll-view" class="hidden">
+      <button class="btn fill" id="coll-back" style="margin-top:4px;align-self:flex-start"></button>
+      <div class="coll-head">
+        <img id="coll-art" alt="">
+        <div class="grow"><div class="display t" id="coll-title"></div><div class="muted" id="coll-sub" style="font-size:13px;margin-top:6px"></div></div>
+      </div>
+      <button class="btn red" id="coll-add" style="width:100%;margin-top:14px;height:50px;border-radius:14px"></button>
+      <div class="rows" id="coll-tracks" style="margin-top:6px"></div>
+    </div>
+  </section>
+
+  <nav class="tabbar" aria-label="Sections">
+    <button data-tab="speaker" aria-current="page"><span data-ic="speaker" style="display:contents"></span>Speaker</button>
+    <button data-tab="queue"><span data-ic="queue" style="display:contents"></span>Queue</button>
+    <button data-tab="search"><span data-ic="search" style="display:contents"></span>Search</button>
+  </nav>
+</div>
+
+<div id="toast" class="toast hidden" role="status"></div>
+<script src="static/common.js"></script>
+<script src="static/guest.js"></script>
+</body>
+</html>

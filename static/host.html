@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script>/* Works at / or under a path prefix (e.g. /rubato/): every URL below resolves against the app root. */
+(function () { var b = document.createElement("base"); b.href = location.pathname.replace(/\/(host|speaker|setup)?\/?$/, "") + "/"; document.head.appendChild(b); })();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#110D0E">
+<meta name="referrer" content="no-referrer">
+<title>rubato · host</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -11 38 38'%3E%3Cpath d='M2 8 C4 2, 6 2, 8 8 S12 14, 15 8 S21 2, 25 8 S33 14, 36 8' fill='none' stroke='%23F2506A' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="preload" href="static/fonts/bricolage-grotesque-latin-opsz-wdth-wght.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="static/rubato.css">
+</head>
+<body>
+<div class="host">
+  <header>
+    <div class="left"><span class="wordmark">rubato<svg viewBox="0 0 38 16" aria-hidden="true"><path d="M2 8 C4 2, 6 2, 8 8 S12 14, 15 8 S21 2, 25 8 S33 14, 36 8"/></svg></span><span class="host-tag">HOST</span></div>
+    <div class="actions">
+      <span class="pill spill off" id="hd-pill" role="status"></span>
+      <button class="btn fill" id="copy-link"></button>
+      <button class="iconbtn" id="settings" aria-label="Settings" aria-expanded="false" aria-haspopup="menu" style="border-radius:12px"></button>
+    </div>
+    <div class="popover hidden" id="settings-pop" role="menu">
+      <button role="menuitem" id="pop-name"></button>
+      <button role="menuitem" id="pop-relink"></button>
+      <a role="menuitem" id="pop-guest" target="_blank" rel="noopener"></a>
+    </div>
+  </header>
+
+  <div id="relink-banner" class="relink hidden" role="alert">
+    <span class="dot off"></span><div class="grow"><b id="relink-title"></b> <span id="relink-sub" class="muted"></span></div>
+    <button class="btn red" id="relink-open">Relink YouTube</button>
+  </div>
+  <form id="keygate" class="card hidden" style="max-width:460px;margin:48px auto;padding:24px" autocomplete="off">
+    <div class="display" style="font-size:34px">Enter your host key</div>
+    <p class="muted" style="font-size:14px;margin:8px 0 16px">It was shown once during setup. This browser will remember it.</p>
+    <input id="keygate-in" class="textin mono" aria-label="Host key" spellcheck="false" autocapitalize="off">
+    <button class="btn red" style="width:100%;margin-top:12px;height:48px">Open dashboard</button>
+    <div id="keygate-err" style="color:var(--red-hi);font-size:14px;margin-top:8px;min-height:20px"></div>
+  </form>
+
+  <main>
+    <div class="col">
+      <section class="card" aria-label="Speaker">
+        <div class="card-head"><span class="label">Speaker</span><span class="pill spill off" id="sp-pill"></span></div>
+        <div class="sp-top">
+          <div id="mini-cone"></div>
+          <div class="grow">
+            <div class="n ellip" id="sp-name">No speaker</div>
+            <div class="d ellip" id="sp-agent">Open the speaker link on the device that plays.</div>
+            <div class="b" id="sp-beat"></div>
+          </div>
+        </div>
+        <div class="slider">
+          <label class="lab" for="vol"><span class="label">Volume</span><span class="v" id="vol-v"></span></label>
+          <input id="vol" type="range" min="0" max="100" value="60">
+        </div>
+        <div class="slider">
+          <label class="lab" for="cap"><span class="label" style="color:var(--amber)">Guest volume cap</span><span class="v amber" id="cap-v"></span></label>
+          <input id="cap" type="range" min="0" max="100" value="80" class="amber">
+          <div class="hint">Guests can't turn it up past this. You can.</div>
+        </div>
+        <div class="btnrow">
+          <button class="btn fill" id="rotate"></button>
+          <button class="btn fill" id="disconnect"></button>
+        </div>
+      </section>
+      <section class="card" aria-label="Engine">
+        <div class="label" style="margin-bottom:6px">Engine</div>
+        <div class="erow"><span>Account</span><span class="v" id="e-account">–</span></div>
+        <div class="erow"><span>Stream</span><span class="v" id="e-stream">–</span></div>
+        <div class="erow"><span>Cache</span><span class="v" id="e-cache">–</span></div>
+        <div class="erow"><span>Next song</span><span class="v" id="e-next">–</span></div>
+        <div class="erow"><span>Radio</span><button class="btn" id="radio-btn" style="height:36px;padding:0 12px"></button></div>
+        <div class="erow"><span>Wrong codes, 10 min</span><span class="v" id="e-wrong">–</span></div>
+      </section>
+    </div>
+
+    <div class="col center">
+      <section class="card" aria-label="Now playing">
+        <div class="np">
+          <div id="np-art"></div>
+          <div class="grow">
+            <div class="label red" id="np-by">Nothing playing</div>
+            <div class="display t ellip" id="np-title">Queue something</div>
+            <div class="s ellip" id="np-sub"></div>
+          </div>
+        </div>
+        <div class="np-ctl">
+          <div id="prog-slot" class="prog"></div>
+          <button class="big red" id="pause" aria-label="Pause" disabled></button>
+          <button class="big dark" id="skip" aria-label="Skip song" disabled></button>
+        </div>
+      </section>
+      <section class="card" aria-label="Queue">
+        <div class="card-head" style="margin-bottom:4px"><h2 class="display">Queue</h2><span class="label" id="q-sub"></span></div>
+        <div class="rows" id="queue"></div>
+        <div id="radio-block">
+          <div class="radio-div"><span id="radio-div"></span></div>
+          <div class="rows faded" id="auto"></div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card" aria-label="Room code">
+        <div class="card-head"><span class="label">Room code</span><button class="btn fill" id="new-session" style="height:36px;padding:0 12px"></button></div>
+        <div class="codebox" id="codebox"></div>
+        <div class="joinrow">
+          <img id="qr" alt="QR code to join">
+          <div style="min-width:0">
+            <div style="font-size:14px;font-weight:700">Scan to grab the aux</div>
+            <div class="mono muted ellip" style="font-size:12px;margin-top:4px" id="join-url"></div>
+            <div class="muted" style="font-size:12px;margin-top:4px">The code unlocks search and the controls. Audio only plays on the speaker.</div>
+          </div>
+        </div>
+      </section>
+      <section class="card" aria-label="Hands on it">
+        <div class="card-head" style="margin-bottom:8px"><span class="label">Hands on it</span><span class="label" id="h-count"></span></div>
+        <div id="hands"></div>
+        <div class="label" style="margin:16px 0 4px">Recent</div>
+        <div id="feed"></div>
+      </section>
+      <section class="card" aria-label="Search">
+        <div class="label" style="margin-bottom:10px">Add to the queue</div>
+        <div class="addbox">
+          <form class="searchfield" id="add-form" role="search" autocomplete="off">
+            <span id="add-ic" style="display:contents"></span>
+            <input id="add-q" type="search" placeholder="Songs, albums, playlists or a link" aria-label="Search songs, albums and playlists">
+          </form>
+          <div class="dropdown hidden" id="add-results"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div id="relink-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="relink-h">
+  <div class="modal-card">
+    <div class="modal-head"><h2 class="display" id="relink-h">Relink YouTube Music</h2><button class="iconbtn bare" id="relink-close" aria-label="Close"></button></div>
+    <p class="muted" style="font-size:14px;margin:4px 0 18px">Upload a fresh cookies.txt. The file is a login to your Google account: never share it, and delete your copy after uploading.</p>
+    <div id="relink-linker"></div>
+  </div>
+</div>
+<div id="key-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="key-h">
+  <div class="modal-card">
+    <div class="modal-head"><h2 class="display" id="key-h">New speaker link</h2><button class="iconbtn bare" id="key-close" aria-label="Close"></button></div>
+    <p class="muted" style="font-size:14px;margin:4px 0 16px">Open this on the device that plays. The old link has stopped working. This is the only time it's shown.</p>
+    <div class="keybox"><span class="mono" id="key-url"></span><button class="btn fill" id="key-copy"></button></div>
+  </div>
+</div>
+<div id="toast" class="toast hidden" role="status"></div>
+<script src="static/common.js"></script>
+<script src="static/link.js"></script>
+<script src="static/host.js"></script>
+</body>
+</html>
