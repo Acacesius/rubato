@@ -85,6 +85,7 @@ function apply(s) {
   spec.setTrack(n ? n.videoId : null);
   setProgress(n && n.qid, s.position, s.playing, n && n.duration);
   $("pause").disabled = $("skip").disabled = !n;
+  $("back").disabled = !n && !s.can_back;
   $("pause").innerHTML = icon(s.paused ? "play" : "pause");
   $("pause").setAttribute("aria-label", s.paused ? "Play" : "Pause");
 
@@ -161,6 +162,13 @@ async function addIds(videoIds, label) {
 $("pause").addEventListener("click", () => state && post("api/pause", { paused: !state.paused }));
 $("skip").innerHTML = icon("skip");
 $("skip").addEventListener("click", () => state && state.now && post("api/skip", { qid: state.now.qid }));
+$("back").innerHTML = icon("prev");
+$("back").addEventListener("click", async () => {
+  if (!state || (!state.now && !state.can_back)) return;
+  const r = await post("api/back", { qid: state.now ? state.now.qid : "" });
+  if (r.ok && (await r.json()).did === "restarted") toast("Restarted");
+});
+setInterval(() => $("back").setAttribute("aria-label", state && state.now && curPos() > 3 ? "Restart song" : "Previous song"), 1000);
 $("radio-btn").addEventListener("click", () => state && post("api/host/radio", { on: !state.radio }));
 
 // volume + cap sliders: send while dragging (throttled) and on release

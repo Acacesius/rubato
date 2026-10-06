@@ -66,6 +66,7 @@ ACT_LIMIT, ACT_WINDOW = 120, 60.0     # other controls (pause, volume, reorder..
 FAIL_LIMIT, FAIL_WINDOW = 10, 600.0   # wrong codes/keys per client IP per window
 AUTO_TARGET = 10
 MAX_FAILS = 3        # consecutive unplayable tracks before giving up
+BACK_RESTART = 3.0   # Back restarts the current song once it has played this long, like any player
 BEAT_TIMEOUT = 5.0   # seconds without a speaker heartbeat before the speaker counts as offline
 FEED_MAX = 20
 NAME_MAX = 20
@@ -158,6 +159,7 @@ class Room:
         self.feed: deque[dict] = deque(maxlen=FEED_MAX)
         self.hands: dict[str, dict] = {}             # actor key -> {count, last, at}
         self.history: deque[str] = deque(maxlen=200)  # videoIds, keeps radio from repeating
+        self.back_stack: deque[dict] = deque(maxlen=30)  # tracks that played, newest last: what Back goes to
         self.add_log: dict[str, deque] = {}
         self.act_log: dict[str, deque] = {}
         self.lock = asyncio.Lock()
@@ -280,6 +282,7 @@ class Room:
             "volume": self.volume,
             "cap": self.cap,
             "auto": [self.public(t) for t in self.auto],
+            "can_back": bool(self.back_stack),
             "radio": self.radio,
             "feed": self.feed_public(),
             "people": self.people(),
@@ -389,6 +392,7 @@ class Room:
         prev = self.now
         if prev:
             self.history.append(prev["videoId"])
+            self.back_stack.append(prev)
         if self.queue:
             self.now = self.queue.pop(0)
         elif self.auto:
@@ -398,17 +402,33 @@ class Room:
             self.now = self.auto.pop(0) if self.auto else None
         else:
             self.now = None
-        self.pos, self.pos_at, self.playing = 0.0, time.monotonic(), False
-        self.loading = self.now is not None
+        self._start()
         log.info("advance (%s): %s", reason, self.now and f"{self.now['artists']} - {self.now['title']}")
         if self.now:
-            asyncio.create_task(self._prepare(self.now))
             # Queue ran dry: seed radio from the track that's now playing. If that
             # track is itself a radio pick, keep the existing radio list going.
             if self.radio and not self.queue and (not self.now["auto"] or len(self.auto) < 3):
                 if not self.now["auto"]:
                     self.auto.clear()
                 asyncio.create_task(self.refill_auto_and_broadcast(self.now))
+
+    def _start(self):
+        """self.now just changed: back to 0:00 and get the track into RAM. Caller holds self.lock."""
+        self.pos, self.pos_at, self.playing = 0.0, time.monotonic(), False
+        self.loading = self.now is not None
+        if self.now:
+            asyncio.create_task(self._prepare(self.now))
+
+    def go_back(self):
+        """Play the previous track again. The current one goes back to the front of the queue (or of
+        the radio list, if it was a radio pick), so skipping forward returns to it. Caller holds self.lock."""
+        prev, cur = self.back_stack.pop(), self.now
+        if cur:
+            (self.auto if cur.get("auto") else self.queue).insert(0, cur)
+        self.now = {**prev, "qid": uuid.uuid4().hex[:10]}  # a new qid: the speaker reloads it, stale skips miss
+        self._start()
+        log.info("back: %s - %s", self.now["artists"], self.now["title"])
+        self.prefetch_next()
 
     async def _prepare(self, item: dict):
         """Get the track into RAM before telling the speaker to load it."""
@@ -485,6 +505,7 @@ class Room:
             self.loading = self.paused = self.playing = False
             self.pos = 0.0
             self.history.clear()
+            self.back_stack.clear()
             self.feed.clear()
             self.hands.clear()
             self.sessions.clear()
@@ -1033,6 +1054,30 @@ async def skip(body: QidBody, request: Request):
         await room.advance("skip")
     await room.broadcast()
     return {"ok": True}
+
+
+@app.post("/api/back")
+async def back(body: QidBody, request: Request):
+    """Back, like any player: restart the song once it has played BACK_RESTART seconds (or when
+    there's nothing before it), otherwise go to the previous one. Works after a skip: the server
+    keeps the play history. Same rights as skip (anyone in the room), and it goes in the feed."""
+    actor = control(request, body)
+    async with room.lock:
+        if room.now and room.now["qid"] != body.qid:
+            return {"ok": False, "stale": True}
+        if room.now and (room.position() > BACK_RESTART or not room.back_stack):
+            if not room.loading:
+                room.seek_to(0.0)
+            room.record(actor, "back", f"restarted {room.now['title']}")
+            did = "restarted"
+        elif room.back_stack:
+            room.go_back()
+            room.record(actor, "back", f"went back to {room.now['title']}")
+            did = "back"
+        else:
+            return {"ok": False}
+    await room.broadcast()
+    return {"ok": True, "did": did}
 
 
 @app.post("/api/volume")

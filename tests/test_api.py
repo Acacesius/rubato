@@ -138,3 +138,26 @@ def test_seek_clamps_is_attributed_and_ignores_old_speaker_beats(client):
                 break
             sp.receive_json()
         assert abs(room.pos - 121) < 0.01
+
+
+def test_back_restarts_then_goes_to_previous_even_after_skip(client):
+    sid = join(client)
+    post(client, "/api/add", sid, videoIds=ids(3))
+    room = main.room
+    first = room.now
+    # Nothing before the first song: Back restarts it.
+    assert post(client, "/api/back", sid, qid=first["qid"]).json()["did"] == "restarted"
+    assert post(client, "/api/skip", sid, qid=first["qid"]).json()["ok"]
+    second = room.now
+    # Just started (< 3 s): Back goes to the previous song; the one we left returns to the front.
+    r = post(client, "/api/back", sid, qid=second["qid"]).json()
+    assert r["did"] == "back" and room.now["videoId"] == first["videoId"] and room.now["qid"] != first["qid"]
+    assert room.queue[0] is second and room.feed[-1]["text"].startswith("went back to") and room.feed[-1]["who"] == "Sam"
+    # Played a while: Back restarts instead, and the speaker is told to jump (seek id).
+    room.loading, room.pos, room.pos_at = False, 42.0, time.monotonic()
+    sid0 = room.seek_id
+    assert post(client, "/api/back", headers=H, qid=room.now["qid"]).json()["did"] == "restarted"
+    assert room.position() == 0.0 and room.seek_id == sid0 + 1 and room.now["videoId"] == first["videoId"]
+    assert post(client, "/api/back", sid, qid="old").json() == {"ok": False, "stale": True}
+    assert post(client, "/api/back", qid=room.now["qid"]).status_code == 401
+    assert room.snapshot()["can_back"] is False   # first song again: nothing before it

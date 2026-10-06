@@ -161,6 +161,7 @@ function render(s) {
   $("pause").innerHTML = icon(s.paused ? "play" : "pause");
   $("pause").setAttribute("aria-label", s.paused ? "Play" : "Pause");
   $("skip").disabled = !n;
+  $("back").disabled = !n && !s.can_back;
   syncVolume();
   $("vol-v").textContent = `${s.volume} / ${s.cap}`;
   dialer.set(s.volume, s.cap);
@@ -238,6 +239,14 @@ setInterval(tickProgress, 250);
 // ---- room controls
 $("pause").addEventListener("click", () => state && state.now && api("api/pause", { paused: !state.paused }));
 $("skip").addEventListener("click", () => state && state.now && api("api/skip", { qid: state.now.qid }));
+// Back: restarts the song after a few seconds, otherwise the previous one (the server keeps the history).
+$("back").innerHTML = icon("prev");
+$("back").addEventListener("click", async () => {
+  if (!state || (!state.now && !state.can_back)) return;
+  const r = await api("api/back", { qid: state.now ? state.now.qid : "" });
+  if (r.ok && (await r.json()).did === "restarted") toast("Restarted");
+});
+setInterval(() => $("back").setAttribute("aria-label", state && state.now && curPos() > 3 ? "Restart song" : "Previous song"), 1000);
 
 // Volume: the range is the control (max = the host's cap); the dial just shows it.
 let volBusy = false, volTimer = null, volSent = 0;

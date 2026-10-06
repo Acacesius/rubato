@@ -65,6 +65,7 @@ const P = {
   play: '<path d="M7 4.5v15l12-7.5z" fill="currentColor"/>',
   pause: '<path d="M8 5v14M16 5v14"/>',
   skip: '<path d="M6 5l10 7-10 7z"/><path d="M18 5v14"/>',
+  prev: '<path d="M18 5L8 12l10 7z"/><path d="M6 5v14"/>',
   queue: '<path d="M4 6h16M4 12h10M4 18h10"/><path d="M17 14l4 3-4 3z"/>',
   speaker: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5" fill="currentColor"/>',
   search: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/>',

@@ -169,6 +169,26 @@ def main():
         check("seek by keyboard: two ArrowLefts = one jump back ~10 s", lambda: speaker.wait_for_function(
             "p0 => { const t = document.getElementById('audio').currentTime; return t < p0 - 6 && t > p0 - 13; }", arg=p0, timeout=5000))
 
+        # Back: after a skip it goes to the previous song and the skipped-to one returns to the top of
+        # the queue; once a song has played a few seconds, Back restarts it. Guests have it too.
+        before = host.locator("#np-title").inner_text()
+        host.click("#skip")
+        expect(host.locator("#np-title")).not_to_have_text(before, timeout=5000)
+        skipped_to = host.locator("#np-title").inner_text()
+        maya.click("#back")
+        check("back (guest, right after a skip) plays the previous song; the speaker follows", lambda: (
+            expect(host.locator("#np-title")).to_have_text(before, timeout=5000),
+            expect(host.locator("#queue .trow").first.locator(".t")).to_have_text(skipped_to, timeout=5000),
+            expect(speaker.locator("#title")).to_have_text(before, timeout=5000)))
+        speaker.wait_for_function("() => document.getElementById('audio').currentTime > 4", timeout=15000)
+        maya.wait_for_timeout(1200)
+        maya.click("#back")
+        check("back after a few seconds restarts the song on the speaker", lambda: (
+            speaker.wait_for_function("() => document.getElementById('audio').currentTime < 3", timeout=5000),
+            expect(host.locator("#np-title")).to_have_text(before)))
+        check("back: in the feed", lambda: (expect(host.locator("#feed")).to_contain_text("Maya went back to", timeout=5000),
+                                            expect(host.locator("#feed")).to_contain_text("Maya restarted", timeout=5000)))
+
         for c in (maya_ctx, theo_ctx, sp_ctx, host_ctx):
             c.close()
         browser.close()
