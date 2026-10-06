@@ -32,6 +32,16 @@
   <p class="foot">No app. No account. The music plays on the speaker.</p>
 </form>
 
+<!-- Artist panel: wide screens only, in the empty space left of the remote -->
+<aside id="artist" class="artist-panel hidden" aria-label="About the artist">
+  <div class="ap-bg" id="ap-bg" aria-hidden="true"></div>
+  <div class="ap-body">
+    <div class="label red">On the speaker · the artist</div>
+    <h2 class="display ap-name" id="ap-name"></h2>
+    <p class="ap-desc" id="ap-desc"></p>
+  </div>
+</aside>
+
 <!-- Room -->
 <div id="room" class="app hidden">
   <div id="notice" class="notice hidden" role="alert"></div>

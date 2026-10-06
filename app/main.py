@@ -24,7 +24,7 @@ import re
 import secrets
 import time
 import uuid
-from collections import deque
+from collections import OrderedDict, deque
 from dataclasses import dataclass
 
 import segno
@@ -553,9 +553,38 @@ NOTICES = {
     "missing": "Playback is off until the host links a YouTube Music account.",
     "expired": "The host's YouTube link has expired. Playback may stop until they relink it.",
 }
+class TTLCache:
+    """Small LRU with expiry."""
+
+    def __init__(self, ttl: float, size: int = 200):
+        self.ttl, self.size = ttl, size
+        self.data: OrderedDict[str, tuple[float, object]] = OrderedDict()
+
+    def get(self, key: str):
+        hit = self.data.get(key)
+        if not hit or time.monotonic() - hit[0] > self.ttl:
+            self.data.pop(key, None)
+            return None
+        self.data.move_to_end(key)
+        return hit[1]
+
+    def put(self, key: str, value):
+        self.data[key] = (time.monotonic(), value)
+        self.data.move_to_end(key)
+        while len(self.data) > self.size:
+            self.data.popitem(last=False)
+
+    def clear(self):
+        self.data.clear()
+
+
 room = Room()
 fail_log: dict[str, deque] = {}
 search_cache: dict[str, dict] = {}  # videoId -> track, from searches/albums/playlists/radio
+artist_cache = TTLCache(24 * 3600, 500)  # per artist: a queue full of one band asks YouTube once
+artist_misses = TTLCache(600, 500)       # failed lookups: retried after 10 minutes, not on every song
+artist_locks: dict[str, asyncio.Lock] = {}
+lookup_log: dict[str, deque] = {}
 
 
 async def startup_probe():
@@ -896,6 +925,53 @@ async def collection(kind: str, id: str, code: str, request: Request):
     remember(tracks)
     thumb = thumb or next((t["thumb"] for t in tracks if t["thumb"]), None)
     return {"kind": kind, "id": id, "title": title, "subtitle": subtitle, "thumb": thumb, "tracks": tracks}
+
+
+ARTIST_ID = re.compile(r"UC[A-Za-z0-9_-]{22}")
+BIO_MAX = 280
+
+
+def short_bio(text: str | None, limit: int = BIO_MAX) -> str | None:
+    """A few sentences: whole sentences when they fit, else cut at a word with an ellipsis."""
+    text = re.sub(r"\s*From Wikipedia.*$", "", text or "", flags=re.S | re.I)  # YouTube's attribution footer
+    text = re.sub(r"\s+", " ", text).strip()
+    if len(text) <= limit:
+        return text or None
+    cut = text[:limit]
+    end = max(cut.rfind(". "), cut.rfind("! "), cut.rfind("? "))
+    if end > limit * 0.5:
+        return cut[:end + 1]
+    return cut.rsplit(" ", 1)[0].rstrip(",;:-–") + "…"
+
+
+@app.get("/api/artist")
+async def artist(id: str, code: str, request: Request):
+    """Name, image and a short bio for the artist panel (wide screens). From ytmusicapi get_artist,
+    cached per artist. A lookup that fails answers with empty fields; the page shows a quiet fallback."""
+    require_code(request, code)
+    if not ARTIST_ID.fullmatch(id):
+        raise HTTPException(400, "bad artist id")
+    if (got := artist_cache.get(id) or artist_misses.get(id)) is not None:
+        return got
+    lock = artist_locks.setdefault(id, asyncio.Lock())
+    async with lock:  # several screens asking at once: one lookup
+        if (got := artist_cache.get(id) or artist_misses.get(id)) is not None:
+            return got
+        if limited(lookup_log, client_ip(request), ACT_LIMIT, ACT_WINDOW):
+            raise HTTPException(429, "slow down")
+        try:
+            a = await asyncio.to_thread(ytm.get_artist, id)
+        except Exception as e:
+            log.info("artist %s failed: %s", id, type(e).__name__)
+            got = {"id": id, "name": None, "description": None, "art": None}
+            artist_misses.put(id, got)
+        else:
+            thumbs = a.get("thumbnails") or []
+            got = {"id": id, "name": a.get("name"), "description": short_bio(a.get("description")),
+                   "art": art.register(thumbs[-1]["url"], wide=True) if thumbs else None}
+            artist_cache.put(id, got)
+    artist_locks.pop(id, None)
+    return got
 
 
 # ------------------------------------------------------------------ room controls (everyone)

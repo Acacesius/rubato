@@ -237,6 +237,19 @@ nav.tabbar button[aria-current=page] { color: var(--red); }
 .coll-head img { width: 88px; height: 88px; border-radius: 12px; object-fit: cover; flex: none; background: var(--surface); }
 .coll-head .t { font-size: 24px; }
 
+/* artist panel (wide screens): the current artist in the empty space left of the remote */
+.artist-panel { display: none; }
+@media (min-width: 1100px) {
+  .artist-panel:not(.hidden) { display: flex; position: fixed; left: 0; top: 0; bottom: 0; width: calc((100vw - 520px) / 2); align-items: flex-end; padding: 56px 48px; overflow: hidden; pointer-events: none; }
+  .ap-bg { position: absolute; inset: 0; background: var(--ground) center / cover no-repeat; opacity: .3; transition: opacity .4s ease-out;
+    -webkit-mask-image: linear-gradient(to right, #000 35%, transparent 100%); mask-image: linear-gradient(to right, #000 35%, transparent 100%); }
+  .ap-bg.none { background: radial-gradient(ellipse at 30% 60%, color-mix(in srgb, var(--red) 28%, transparent), transparent 65%); opacity: .45; }
+  .ap-body { position: relative; max-width: 440px; pointer-events: auto; }
+  .ap-name { margin: 12px 0 0; font-size: clamp(40px, 4.4vw, 72px); overflow-wrap: anywhere; }
+  .ap-desc { margin: 16px 0 0; font-size: 16px; line-height: 1.55; color: var(--muted); }
+  .ap-desc.quiet { color: var(--grip); font-size: 14px; }
+}
+
 /* ================= speaker (fullscreen, read across a room) ================= */
 .speaker { min-height: 100dvh; display: flex; flex-direction: column; padding: 0 clamp(24px, 3.4vw, 64px) 36px; }
 .speaker > header { height: 88px; flex: none; display: flex; align-items: center; justify-content: space-between; gap: 16px; }

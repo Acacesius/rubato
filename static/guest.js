@@ -89,6 +89,8 @@ function leave(msg) {
   localStorage.removeItem("rubato.code");
   if (ws) { ws.onclose = null; ws.close(); ws = null; }
   $("room").classList.add("hidden");
+  $("artist").classList.add("hidden");
+  artistKey = null;
   $("join").classList.remove("hidden");
   $("join-err").textContent = msg || "";
   teaser(null);
@@ -151,6 +153,7 @@ function render(s) {
 
   // remote
   const n = s.now;
+  renderArtist();
   setCone(coneEl, n, coneMode(s));
   $("by").textContent = n ? (s.status === "offline" ? "Speaker offline · paused" : s.status === "loading" ? "Loading…" : byLine(n)) : "Nothing playing";
   $("np-title").textContent = n ? n.title : "Nothing playing";
@@ -286,6 +289,39 @@ async function removeTrack(t) {
   const r = await api("api/remove", { qid: t.qid });
   if (r.ok) toast(`Removed ${t.title}`);
 }
+
+// ---- artist panel: on wide screens, the current artist's image (large, faded), name and a short bio,
+// in the empty space left of the remote. Phones never fetch it. Cached per artist here and on the server.
+const wide = matchMedia("(min-width: 1100px)");
+const artists = new Map();
+let artistKey = null;
+async function renderArtist() {
+  const n = state && state.now, box = $("artist");
+  box.classList.toggle("hidden", !n || !code || !wide.matches);
+  if (!n || !code || !wide.matches) { artistKey = null; return; }
+  const key = n.artistId || `name:${n.artists}`;
+  if (key === artistKey) return;
+  artistKey = key;
+  const show = (a) => {
+    if (artistKey !== key) return;
+    $("ap-name").textContent = (a && a.name) || (n.artists || "").split(", ")[0] || "Unknown artist";
+    const bio = a && a.description;
+    $("ap-desc").textContent = bio || "No bio on YouTube Music for this artist.";
+    $("ap-desc").classList.toggle("quiet", !bio);
+    $("ap-bg").classList.toggle("none", !(a && a.art));
+    $("ap-bg").style.backgroundImage = a && a.art ? `url("${artUrl(a.art, 1200)}")` : "";
+  };
+  show(null);
+  if (!n.artistId) return;
+  let a = artists.get(n.artistId);
+  if (!a) {
+    const r = await api(`api/artist?id=${encodeURIComponent(n.artistId)}&code=${encodeURIComponent(code)}`).catch(() => null);
+    a = r && r.ok ? await r.json() : null;
+    if (a) artists.set(n.artistId, a);
+  }
+  show(a);
+}
+wide.addEventListener("change", () => { artistKey = null; renderArtist(); });
 
 // ---- search: all / songs / albums / playlists, or a pasted link
 let kind = "all";
