@@ -176,9 +176,7 @@ function render(s) {
     n.auto ? el("span", { class: "label", textContent: "Radio" }) : avatar(n.by_name, n.initials)));
   $("q-head").textContent = s.queue.length ? `Up next · ${s.queue.length}` : "Up next";
   // Lists rebuild only when they changed (patches keep an unchanged queue identical).
-  if (!sorter.dragging && (!prev || prev.queue !== s.queue || prev.radio !== s.radio)) {
-    $("queue").replaceChildren(...(s.queue.length ? s.queue.map(qrow) : [el("div", { class: "empty", textContent: s.radio ? "Nothing queued. The radio will pick." : "Nothing queued. Search for something." })]));
-  }
+  if (!sorter.dragging && (!prev || prev.queue !== s.queue || prev.radio !== s.radio)) renderQueue(s);
   $("radio-block").classList.toggle("hidden", !s.radio || !s.auto.length);
   const last = s.queue.length ? s.queue[s.queue.length - 1] : n;
   $("radio-div").textContent = last ? `Radio takes over after ${last.title}` : "Radio";
@@ -198,7 +196,17 @@ function qrow(t) {
   row.dataset.qid = t.qid;
   return row;
 }
-const sorter = sortable($("queue"), (qid, index) => api("api/move", { qid, index }));
+function renderQueue(s) {
+  $("queue").replaceChildren(...(s.queue.length ? s.queue.map(qrow) : [el("div", { class: "empty", textContent: s.radio ? "Nothing queued. The radio will pick." : "Nothing queued. Search for something." })]));
+  sorter.restore();
+}
+// Drag to reorder (anyone, any song). The server checks it against the queue as it is now: if someone
+// else moved things first it refuses, and the list redraws from the broadcast either way.
+async function moveTrack(qid, index, from) {
+  const r = await api("api/move", { qid, index, from_index: from });
+  if (!r.ok) toast((await r.json().catch(() => ({}))).detail || "Couldn't move that.");
+}
+const sorter = sortable($("queue"), { onMove: moveTrack, onIdle: () => state && renderQueue(state) });
 
 function addBtn(t, opts = {}) {
   return el("button", { class: "iconbtn", html: icon("plus"), ariaLabel: `Add ${t.title} to the queue`, onclick: (e) => addTracks([t.videoId], { btn: e.currentTarget, label: t.title, ...opts }) });

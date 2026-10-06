@@ -71,3 +71,35 @@ def test_feed_uses_timestamps_not_ago(client):
     post(client, "/api/add", sid, videoIds=ids(1))
     f = main.room.snapshot()["feed"][0]
     assert "ago" not in f and "key" not in f and abs(f["ts"] - time.time()) < 5
+
+
+def test_drag_is_for_everyone_and_stale_drags_are_refused(client):
+    sid = join(client)
+    post(client, "/api/add", sid, videoIds=ids(5))   # one plays, four queued
+    q = [t["qid"] for t in main.room.queue]
+    r = post(client, "/api/move", sid, qid=q[3], index=0, from_index=3)
+    assert r.status_code == 200 and r.json()["index"] == 0
+    assert [t["qid"] for t in main.room.queue] == [q[3], q[0], q[1], q[2]]
+    assert main.room.feed[-1]["kind"] == "reorder"
+    # Someone else's drag landed first: q[1] is no longer where this client saw it.
+    assert post(client, "/api/move", sid, qid=q[1], index=0, from_index=1).status_code == 409
+    assert post(client, "/api/move", sid, qid="gone", index=0, from_index=0).status_code == 409
+    assert post(client, "/api/move", qid=q[1], index=0).status_code == 401   # needs a session
+
+
+def test_concurrent_drags_never_corrupt_the_queue(client):
+    import random
+    from concurrent.futures import ThreadPoolExecutor
+    sid = join(client)
+    post(client, "/api/add", headers=H, videoIds=ids(12))
+    before = sorted(t["qid"] for t in main.room.queue)
+
+    def drag(i):
+        rnd = random.Random(i)
+        q = list(main.room.queue)
+        frm = rnd.randrange(len(q))
+        return post(client, "/api/move", headers=H, qid=q[frm]["qid"], index=rnd.randrange(len(q)), from_index=frm).status_code
+    with ThreadPoolExecutor(8) as ex:
+        codes = list(ex.map(drag, range(60)))
+    assert set(codes) <= {200, 409}
+    assert sorted(t["qid"] for t in main.room.queue) == before

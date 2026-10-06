@@ -250,39 +250,62 @@ function setRangeFill(input) {
   input.style.setProperty("--fill", `${(+input.value / max) * 100}%`);
 }
 
-// ---- drag-to-reorder for queue rows: pointer drag on the grip, or arrow keys on it.
-// Rows carry data-qid; onMove(qid, newIndex) is called with the final index.
-function sortable(list, onMove) {
-  const ctl = { dragging: false };
+// ---- drag to reorder. Each movable row has a grip button (.grip). Drag it with a mouse, pen or
+// finger, or focus it and press ArrowUp / ArrowDown. The server decides: onMove(qid, to, from)
+// sends the request (`to` counts without the moved row), and the list redraws from the broadcast.
+// While a drag is on, ctl.dragging is true and the page holds off redrawing the list; onIdle()
+// runs when it ends so the page can catch up. After a redraw, ctl.restore() keeps keyboard focus.
+function sortable(list, { onMove, onIdle = () => {} }) {
+  const ctl = { dragging: false, focusQid: null };
   const rows = () => [...list.querySelectorAll(":scope > [data-qid]")];
-  const clear = () => rows().forEach((r) => r.classList.remove("drop-above", "drop-below", "dragging"));
+  const scroller = () => {
+    for (let n = list.parentElement; n && n !== document.body; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowY;
+      if ((o === "auto" || o === "scroll") && n.scrollHeight > n.clientHeight) return n;
+    }
+    return document.scrollingElement;
+  };
   list.addEventListener("pointerdown", (e) => {
     const grip = e.target.closest(".grip");
     if (!grip || e.button > 0) return;
     const row = grip.closest("[data-qid]"), all = rows(), from = all.indexOf(row);
     if (from < 0) return;
     e.preventDefault();
-    grip.setPointerCapture(e.pointerId);
+    try { grip.setPointerCapture(e.pointerId); } catch {}
     ctl.dragging = true;
+    const sc = scroller(), top0 = sc.scrollTop, y0 = e.clientY, h = row.getBoundingClientRect().height;
+    const others = all.filter((r) => r !== row);
+    const mids = others.map((r) => { const b = r.getBoundingClientRect(); return b.top + b.height / 2; });
+    const rb = row.getBoundingClientRect(), mid0 = rb.top + rb.height / 2;
+    let y = y0, target = from, raf = 0;
+    list.classList.add("sorting");
     row.classList.add("dragging");
-    let target = from;
-    const move = (ev) => {
-      clear();
-      row.classList.add("dragging");
-      const rs = rows();
-      target = rs.findIndex((r) => { const b = r.getBoundingClientRect(); return ev.clientY < b.top + b.height / 2; });
-      if (target < 0) target = rs.length;
-      if (target === from || target === from + 1) return;
-      if (target < rs.length) rs[target].classList.add("drop-above"); else rs[rs.length - 1].classList.add("drop-below");
+    const place = () => {
+      const scrolled = sc.scrollTop - top0;
+      row.style.transform = `translateY(${y - y0 + scrolled}px)`;
+      const mid = mid0 + (y - y0);
+      target = mids.filter((m) => m - scrolled < mid).length;
+      others.forEach((r, j) => { r.style.transform = j >= from && j < target ? `translateY(${-h}px)` : j < from && j >= target ? `translateY(${h}px)` : ""; });
     };
-    const up = () => {
+    const tick = () => { // scroll when the finger is near the top or bottom edge
+      const b = sc === document.scrollingElement ? { top: 0, bottom: innerHeight } : sc.getBoundingClientRect();
+      const step = y < b.top + 56 ? -12 : y > b.bottom - 56 ? 12 : 0;
+      if (step) { sc.scrollTop += step; place(); }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    const move = (ev) => { y = ev.clientY; place(); };
+    const up = (ev) => {
+      cancelAnimationFrame(raf);
       grip.removeEventListener("pointermove", move);
       grip.removeEventListener("pointerup", up);
       grip.removeEventListener("pointercancel", up);
-      clear();
+      all.forEach((r) => (r.style.transform = ""));
+      list.classList.remove("sorting");
+      row.classList.remove("dragging");
       ctl.dragging = false;
-      const to = target > from ? target - 1 : target;
-      if (to !== from) onMove(row.dataset.qid, to);
+      if (ev.type === "pointerup" && target !== from) onMove(row.dataset.qid, target, from);
+      onIdle();
     };
     grip.addEventListener("pointermove", move);
     grip.addEventListener("pointerup", up);
@@ -292,9 +315,17 @@ function sortable(list, onMove) {
     const grip = e.target.closest(".grip");
     if (!grip || (e.key !== "ArrowUp" && e.key !== "ArrowDown")) return;
     e.preventDefault();
-    const row = grip.closest("[data-qid]"), from = rows().indexOf(row), to = from + (e.key === "ArrowUp" ? -1 : 1);
-    if (to >= 0 && to < rows().length) onMove(row.dataset.qid, to);
+    const row = grip.closest("[data-qid]"), all = rows(), from = all.indexOf(row), to = from + (e.key === "ArrowUp" ? -1 : 1);
+    if (to < 0 || to >= all.length) return;
+    ctl.focusQid = row.dataset.qid;
+    onMove(row.dataset.qid, to, from);
   });
+  ctl.restore = () => {
+    if (!ctl.focusQid) return;
+    const g = list.querySelector(`[data-qid="${CSS.escape(ctl.focusQid)}"] .grip`);
+    if (g) g.focus();
+    ctl.focusQid = null;
+  };
   return ctl;
 }
-const gripBtn = (t) => el("button", { class: "grip", html: icon("grip"), ariaLabel: `Reorder ${t.title}. Drag, or use the arrow keys.` });
+const gripBtn = (t) => el("button", { class: "grip", html: icon("grip"), title: "Drag to reorder", ariaLabel: `Move ${t.title}. Drag, or use the arrow keys.` });

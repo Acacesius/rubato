@@ -10,6 +10,7 @@
   --text: #F4EEEC; --muted: #A8999A; --grip: #6E6062;
   --red: #F2506A; --red-hi: #FF7A8E; --on-red: #110D0E; --red-glow: 0 0 12px #F2506A;
   --amber: #F4B544;
+  --shadow: #00000088;
   --line-past: #8C3445; --line-ahead: #3D2E31; --elapsed: rgba(242, 80, 106, .12);
   --sans: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
@@ -139,11 +140,12 @@ input[type=range].amber { --tc: var(--amber); accent-color: var(--amber); }
 .trow .s { margin-top: 2px; font-size: 13px; color: var(--muted); }
 .trow .acts { display: flex; gap: 4px; align-items: center; flex: none; }
 .trow .dur { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-.grip { width: 28px; height: 44px; display: flex; align-items: center; justify-content: center; color: var(--grip); cursor: grab; touch-action: none; flex: none; margin-right: -6px; }
+.grip { width: 44px; height: 44px; margin: 0 -12px 0 -10px; display: flex; align-items: center; justify-content: center; color: var(--grip); cursor: grab; touch-action: none; flex: none; border-radius: 8px; }
+.grip:hover { color: var(--text); }
 .grip svg.i { width: 18px; height: 18px; }
-.trow.dragging { opacity: .35; }
-.trow.drop-above { box-shadow: inset 0 2px 0 var(--red); }
-.trow.drop-below { box-shadow: inset 0 -2px 0 var(--red); }
+/* drag to reorder (sortable() in common.js): rows slide aside, the dragged one lifts */
+.sorting > [data-qid] { transition: transform .15s ease-out; }
+.sorting > .dragging { transition: none; position: relative; z-index: 3; background: var(--raised); border-radius: 12px; box-shadow: 0 10px 28px var(--shadow); cursor: grabbing; }
 .radio-div { margin: 16px 0 6px; display: flex; align-items: center; gap: 10px; color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; }
 .radio-div::before, .radio-div::after { content: ""; flex: 1; border-top: 1px dashed var(--border); }
 .radio-div span { max-width: 75%; text-align: center; }

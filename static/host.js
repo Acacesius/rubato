@@ -91,10 +91,7 @@ function apply(s) {
   $("q-sub").textContent = `${s.queue.length} song${s.queue.length === 1 ? "" : "s"} · ${Math.round(s.queue.reduce((a, t) => a + (t.duration || 0), 0) / 60)} min`;
   // Rebuild the rows only when the queue (or the "cached" note) changed: patches keep an unchanged queue identical.
   const qkey = `${e.next_qid}|${e.next}`;
-  if (!sorter.dragging && (!prev || prev.queue !== s.queue || qkey !== renderedQkey)) {
-    renderedQkey = qkey;
-    $("queue").replaceChildren(...(s.queue.length ? s.queue.map((t) => qrow(t, e)) : [el("div", { class: "empty", textContent: "Nothing queued. Search on the right to add songs." })]));
-  }
+  if (!sorter.dragging && (!prev || prev.queue !== s.queue || qkey !== renderedQkey)) renderQueue(s);
   $("radio-block").classList.toggle("hidden", !s.radio);
   const last = s.queue.length ? s.queue[s.queue.length - 1] : n;
   $("radio-div").textContent = last ? `Radio takes over after ${last.title}` : "Radio";
@@ -134,7 +131,17 @@ function qrow(t, engine) {
   row.dataset.qid = t.qid;
   return row;
 }
-const sorter = sortable($("queue"), (qid, index) => post("api/move", { qid, index }));
+function renderQueue(s) {
+  const e = s.host.engine;
+  renderedQkey = `${e.next_qid}|${e.next}`;
+  $("queue").replaceChildren(...(s.queue.length ? s.queue.map((t) => qrow(t, e)) : [el("div", { class: "empty", textContent: "Nothing queued. Search on the right to add songs." })]));
+  sorter.restore();
+}
+async function moveTrack(qid, index, from) {
+  const r = await post("api/move", { qid, index, from_index: from });
+  if (!r.ok) toast((await r.json().catch(() => ({}))).detail || "Couldn't move that.");
+}
+const sorter = sortable($("queue"), { onMove: moveTrack, onIdle: () => state && renderQueue(state) });
 
 function autorow(t) {
   return el("div", { class: "trow" }, el("span", { style: "width:22px" }), art(t),

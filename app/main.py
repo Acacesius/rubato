@@ -874,7 +874,8 @@ class QidBody(Act):
 
 
 class MoveBody(QidBody):
-    index: int
+    index: int                     # where it goes, counted without it
+    from_index: int | None = None  # where the client saw it: if it's moved since, the drag is refused
 
 
 class PauseBody(Act):
@@ -948,13 +949,17 @@ async def remove(body: QidBody, request: Request):
 
 @app.post("/api/move")
 async def move(body: MoveBody, request: Request):
-    """Reorder the queue (drag handle)."""
+    """Drag to reorder: anyone in the room, any song. Every drag runs under the room lock against the
+    queue as it is now, so two people dragging at once can't corrupt it: a drag based on a stale view
+    (from_index) is refused and the client redraws from the broadcast."""
     actor = control(request, body)
     async with room.lock:
         t = next((t for t in room.queue if t["qid"] == body.qid), None)
         if not t:
-            return {"ok": False}
+            raise HTTPException(409, "That song isn't in the queue any more.")
         old = room.queue.index(t)
+        if body.from_index is not None and old != body.from_index:
+            raise HTTPException(409, "The queue changed while you were dragging.")
         room.queue.remove(t)
         new = max(0, min(body.index, len(room.queue)))
         room.queue.insert(new, t)
@@ -962,7 +967,7 @@ async def move(body: MoveBody, request: Request):
             room.record(actor, "reorder", f"moved {t['title']} to #{new + 1}")
             room.prefetch_next()
     await room.broadcast()
-    return {"ok": True}
+    return {"ok": True, "index": new}
 
 
 @app.post("/api/pause")

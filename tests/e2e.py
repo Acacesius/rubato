@@ -100,6 +100,43 @@ def main():
 
         # ---- feature checks are added below, one block per feature
 
+        # Drag to reorder: anyone, any song. Theo by touch (real touch events), the host by mouse and
+        # keyboard. The server decides; every client redraws from the broadcast.
+        theo.click("nav.tabbar [data-tab=queue]")
+        theo.wait_for_timeout(600)
+        rows_t = theo.locator("#queue .trow")
+        moved = rows_t.last.locator(".t").inner_text()
+        g, top = rows_t.last.locator(".grip").bounding_box(), rows_t.first.bounding_box()
+        cdp_t = theo_ctx.new_cdp_session(theo)
+        x, y = g["x"] + g["width"] / 2, g["y"] + g["height"] / 2
+        cdp_t.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+        for k in range(1, 11):
+            cdp_t.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": y + (top["y"] - 10 - y) * k / 10}]})
+            theo.wait_for_timeout(30)
+        cdp_t.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+        check("guest touch-drags the last song to the top; the host follows", lambda: (
+            expect(rows_t.first.locator(".t")).to_have_text(moved, timeout=5000),
+            expect(host.locator("#queue .trow").first.locator(".t")).to_have_text(moved, timeout=5000)))
+        rows = host.locator("#queue .trow")
+        last = rows.last.locator(".t").inner_text()
+        g, first_box = rows.last.locator(".grip").bounding_box(), rows.first.bounding_box()
+        host.mouse.move(g["x"] + g["width"] / 2, g["y"] + g["height"] / 2)
+        host.mouse.down()
+        for k in range(1, 13):
+            host.mouse.move(g["x"] + g["width"] / 2, g["y"] + (first_box["y"] + 5 - g["y"]) * k / 12)
+            host.wait_for_timeout(25)
+        host.mouse.up()
+        check("host mouse-drags the last song to the top; phones follow", lambda: (
+            expect(rows.first.locator(".t")).to_have_text(last, timeout=5000),
+            expect(rows_t.first.locator(".t")).to_have_text(last, timeout=5000)))
+        second = rows.nth(1).locator(".t").inner_text()
+        rows.nth(1).locator(".grip").focus()
+        host.keyboard.press("ArrowUp")
+        check("keyboard: ArrowUp on a grip moves it up and keeps focus", lambda: (
+            expect(rows.first.locator(".t")).to_have_text(second, timeout=5000),
+            host.wait_for_function("t => document.activeElement.classList.contains('grip') && document.activeElement.closest('.trow').querySelector('.t').textContent === t", arg=second, timeout=3000)))
+        check("hands on it: the drags are attributed", lambda: expect(host.locator("#feed")).to_contain_text("Theo moved", timeout=5000))
+
         for c in (maya_ctx, theo_ctx, sp_ctx, host_ctx):
             c.close()
         browser.close()
