@@ -6,7 +6,7 @@ services:
   rubato:
     image: ghcr.io/acacesius/rubato:latest
     restart: unless-stopped
-    # Must be able to write ./config (keys, setup state, cookies.txt).
+    # Must be able to write ./config (keys, setup state, cookies.txt) and ./cache (artwork).
     user: "${RUBATO_UID:-1000}:${RUBATO_GID:-1000}"
     environment:
       PUBLIC_URL: ${PUBLIC_URL:-}
@@ -23,8 +23,10 @@ services:
       - "${BIND:-127.0.0.1}:${PORT:-8766}:8766"
     volumes:
       - ./config:/app/config
+      # Artwork cache (album art, artist images): served from here so phones don't each fetch from Google.
+      - ./cache:/app/cache
     # Hardening: no root, no capabilities, no privilege escalation, read-only
-    # root filesystem (only ./config and the /tmp tmpfs are writable), bounded
+    # root filesystem (only ./config, ./cache and the /tmp tmpfs are writable), bounded
     # memory and processes. Never mount the Docker socket into this container.
     read_only: true
     cap_drop: [ALL]

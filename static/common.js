@@ -29,6 +29,34 @@ function fmt(s) {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = String(s % 60).padStart(2, "0");
   return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
 }
+// ---- state over the socket: a full "state" on connect, then "patch" messages (see app/delta.py).
+// Returns the new state, or null when this client missed a version and must ask for a resync.
+// Unchanged parts keep their identity (s.queue === old.queue when the queue didn't change).
+function applyPatch(state, m) {
+  if (m.type === "state") return m;
+  if (!state) return null;
+  const s = { ...state, ...(m.set || {}) };
+  for (const k of m.del || []) delete s[k];
+  if (m.q) {
+    if (m.q.base !== state.qver) return null;
+    s.queue = applyQueue(state.queue, m.q);
+  } else if (m.qver !== state.qver) return null;
+  s.qver = m.qver;
+  return s;
+}
+// Queue edits: drop rm + every qid in put, then insert the put entries in order.
+function applyQueue(old, { rm, put }) {
+  const by = new Map(old.map((t) => [t.qid, t]));
+  const gone = new Set([...rm, ...put.map(([, x]) => (typeof x === "string" ? x : x.qid))]);
+  const out = old.filter((t) => !gone.has(t.qid));
+  for (const [i, x] of put) out.splice(i, 0, typeof x === "string" ? by.get(x) : x);
+  return out;
+}
+// Seconds since a server timestamp, using the offset measured from the latest state's server_time.
+let serverOffset = 0;
+const setServerTime = (t) => { if (t) serverOffset = t - Date.now() / 1000; };
+const sinceTs = (ts) => (ts == null ? null : Math.max(0, Date.now() / 1000 + serverOffset - ts));
+
 const ago = (s) => (s == null ? "" : s < 5 ? "now" : s < 60 ? `${Math.round(s)}s ago` : s < 3600 ? `${Math.floor(s / 60)}m ago` : `${Math.floor(s / 3600)}h ago`);
 const ordinal = (n) => `${n}${["th", "st", "nd", "rd"][(n % 100 > 10 && n % 100 < 14) ? 0 : n % 10 < 4 ? n % 10 : 0]}`;
 
@@ -88,9 +116,11 @@ function artPh(t, cls) {
   const [bg, fg] = pairOf(t ? t.title : "");
   return el("div", { class: `${cls} ph`, style: `background:${bg};color:${fg}`, textContent: t ? titleInitials(t.title) : "" });
 }
-function art(t, cls = "art") {
+// Artwork comes from the server's cache (art/<id>) at the size asked for: small for list rows.
+const artUrl = (thumb, px = 120) => (thumb ? `${thumb}${thumb.includes("?") ? "&" : "?"}s=${px}` : null);
+function art(t, cls = "art", px = 120) {
   if (!t || !t.thumb) return artPh(t, cls);
-  return el("img", { class: cls, src: t.thumb, alt: "", loading: "lazy", onerror: (e) => e.target.replaceWith(artPh(t, cls)) });
+  return el("img", { class: cls, src: artUrl(t.thumb, px), alt: "", loading: "lazy", decoding: "async", onerror: (e) => e.target.replaceWith(artPh(t, cls)) });
 }
 
 let toastTimer;
@@ -139,7 +169,7 @@ function setCone(c, t, mode) {
   c._key = key;
   const cap = c.querySelector(".cap");
   const fresh = !t ? el("div", { class: "cap ph", style: "background:var(--raised)" }) : t.thumb
-    ? el("div", { class: "cap" }, el("img", { src: t.thumb.replace(/=w\d+-h\d+/, "=w544-h544"), alt: "", onerror: () => fresh.replaceWith(capPh(t)) }))
+    ? el("div", { class: "cap" }, el("img", { src: artUrl(t.thumb, 544), alt: "", onerror: () => fresh.replaceWith(capPh(t)) }))
     : capPh(t);
   cap.replaceWith(fresh);
 }

@@ -101,7 +101,10 @@ function connect() {
   ws.onopen = () => ws.send(JSON.stringify({ type: "auth", code, sid }));
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
-    if (m.type === "state") render(m);
+    if (m.type === "state" || m.type === "patch") {
+      const s = applyPatch(state, m);
+      if (s) render(s); else ws.send('{"type":"resync"}');
+    }
     else if (m.type === "beat" && state && state.now && m.qid === state.now.qid) setProgress(m.qid, m.position, m.playing, state.now.duration);
   };
   ws.onclose = (e) => {
@@ -139,7 +142,9 @@ const coneMode = (s) => (s.speaker.state === "offline" || !s.now ? "off" : s.sta
 const byLine = (t) => (t.auto ? "From radio" : `Queued by ${t.by}`);
 
 function render(s) {
+  const prev = state;
   state = s;
+  setServerTime(s.server_time);
   $("notice").textContent = s.notice || "";
   $("notice").classList.toggle("hidden", !s.notice);
   speakerPill($("sp-pill"), s.speaker);
@@ -170,13 +175,14 @@ function render(s) {
     el("div", { class: "t ellip", textContent: n.title }), el("div", { class: "s ellip", textContent: n.artists })),
     n.auto ? el("span", { class: "label", textContent: "Radio" }) : avatar(n.by_name, n.initials)));
   $("q-head").textContent = s.queue.length ? `Up next · ${s.queue.length}` : "Up next";
-  if (!sorter.dragging) {
+  // Lists rebuild only when they changed (patches keep an unchanged queue identical).
+  if (!sorter.dragging && (!prev || prev.queue !== s.queue || prev.radio !== s.radio)) {
     $("queue").replaceChildren(...(s.queue.length ? s.queue.map(qrow) : [el("div", { class: "empty", textContent: s.radio ? "Nothing queued. The radio will pick." : "Nothing queued. Search for something." })]));
   }
   $("radio-block").classList.toggle("hidden", !s.radio || !s.auto.length);
   const last = s.queue.length ? s.queue[s.queue.length - 1] : n;
   $("radio-div").textContent = last ? `Radio takes over after ${last.title}` : "Radio";
-  $("auto").replaceChildren(...s.auto.slice(0, 5).map((t) => trow(t, [addBtn(t)])));
+  if (!prev || prev.auto !== s.auto) $("auto").replaceChildren(...s.auto.slice(0, 5).map((t) => trow(t, [addBtn(t)])));
 
   refreshQueuedMarks();
 }
@@ -296,7 +302,7 @@ async function runSearch() {
     if (!items.length) continue;
     out.push(el("div", { class: "label sechead", textContent: label }), el("div", { class: "cards" }, ...items.slice(0, kind === "all" ? 4 : 20).map((a) =>
       el("button", { class: "acard", onclick: () => openCollection(a.kind, a.id) },
-        a.thumb ? el("img", { class: "cover", src: a.thumb, alt: "", loading: "lazy" }) : artPh(a, "cover"),
+        a.thumb ? el("img", { class: "cover", src: artUrl(a.thumb, 240), alt: "", loading: "lazy" }) : artPh(a, "cover"),
         el("div", { class: "t ellip", textContent: a.title }), el("div", { class: "s ellip", textContent: a.subtitle })))));
   }
   $("results").replaceChildren(...out);
@@ -322,7 +328,7 @@ async function openCollection(k, id) {
   const c = await r.json();
   $("coll-title").textContent = c.title;
   $("coll-sub").textContent = c.subtitle;
-  if (c.thumb) $("coll-art").src = c.thumb;
+  if (c.thumb) $("coll-art").src = artUrl(c.thumb, 240);
   const ids = c.tracks.map((t) => t.videoId).slice(0, 50);
   const addAll = $("coll-add");
   addAll.classList.toggle("hidden", !ids.length);

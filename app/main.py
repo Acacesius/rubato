@@ -34,6 +34,8 @@ from pydantic import BaseModel
 
 from . import cookies as cookiejar
 from . import setup as setupstate
+from .artcache import art
+from .delta import Sync, dumps
 from .netstats import net
 from .media import COOKIES, PROBE_VIDEO_ID, Resolver, _thumb, make_ytmusic, probe_account, song_to_track, to_track
 
@@ -67,6 +69,8 @@ BEAT_TIMEOUT = 5.0   # seconds without a speaker heartbeat before the speaker co
 FEED_MAX = 20
 NAME_MAX = 20
 STATIC = os.path.join(os.path.dirname(__file__), "..", "static")
+DEBOUNCE = 0.1         # a burst of changes (an album's worth of adds) goes out as one push
+PREFETCH_DELAY = 3.0   # fetch the next track once the queue has stopped changing for this long
 
 ytm = make_ytmusic()
 resolver = Resolver()
@@ -156,6 +160,9 @@ class Room:
         self.lock = asyncio.Lock()
         self.auto_lock = asyncio.Lock()
         self.fails = 0
+        self.sync = Sync()
+        self._flush: asyncio.Task | None = None
+        self._prefetch: asyncio.Task | None = None
 
     # ---- derived values
     def online(self) -> bool:
@@ -201,9 +208,9 @@ class Room:
         return None if it is None else {k: v for k, v in it.items() if not k.startswith("_")}
 
     def feed_public(self) -> list[dict]:
-        now = time.monotonic()
         # "key" is a session id, which authorises that guest's actions: it never leaves the server.
-        return [{**{k: v for k, v in e.items() if k not in ("at", "key")}, "ago": round(now - e["at"])} for e in reversed(self.feed)]
+        # "ts" is server time: clients show how long ago, so the feed doesn't change every second.
+        return [{k: v for k, v in e.items() if k not in ("at", "key")} for e in reversed(self.feed)]
 
     def connected(self) -> list[str]:
         """Session ids of guests with an open socket, deduplicated (one person, several tabs)."""
@@ -213,7 +220,7 @@ class Room:
         return sorted({self.sessions[s].name for s in self.connected() if s in self.sessions}, key=str.lower)
 
     def hands_rows(self) -> list[dict]:
-        now, rows = time.monotonic(), []
+        rows = []
         keys = (["host"] if self.hosts else []) + self.connected()
         for k in keys:
             name = host_name() if k == "host" else self.sessions[k].name if k in self.sessions else None
@@ -222,7 +229,7 @@ class Room:
             h = self.hands.get(k, {})
             rows.append({"name": name, "label": f"{name} (host)" if k == "host" else name, "initials": initials(name),
                          "device": "" if k == "host" else self.devices.get(k, ""), "count": h.get("count", 0),
-                         "last": h.get("last"), "ago": round(now - h["at"]) if h.get("at") else None})
+                         "last": h.get("last"), "ts": h.get("ts")})
         return rows
 
     def cache_stats(self) -> tuple[int, int]:
@@ -257,9 +264,10 @@ class Room:
         }
 
     def snapshot(self, role: str = "guest") -> dict:
+        """Everything a client shows, except the queue (which travels as edits, see delta.py)."""
         s = {
-            "type": "state",
             "now": self.public(self.now),
+            "server_time": round(time.time(), 2),
             "status": self.status(),
             "speaker": {"state": self.speaker_state(), "device": self.speaker.device if self.speaker else None},
             "position": round(self.position(), 2),
@@ -267,7 +275,6 @@ class Room:
             "paused": self.paused,
             "volume": self.volume,
             "cap": self.cap,
-            "queue": [self.public(t) for t in self.queue],
             "auto": [self.public(t) for t in self.auto],
             "radio": self.radio,
             "feed": self.feed_public(),
@@ -299,11 +306,13 @@ class Room:
         await self._send_text(ws, text)
 
     async def _send_all(self, kind: str, targets: list[tuple[WebSocket, dict]]):
-        texts = [(ws, json.dumps(m, separators=(",", ":"))) for ws, m in targets]
+        texts = [(ws, dumps(m)) for ws, m in targets]
         net.push_batch(kind, [t for _, t in texts])
         await asyncio.gather(*(self._send_text(ws, t) for ws, t in texts))
 
-    async def broadcast(self):
+    async def flush(self):
+        """Bring every socket up to date: a patch, or the full state if it has none yet (delta.py)."""
+        self.sync.set_queue([self.public(t) for t in self.queue])
         guest = self.snapshot()
         targets = [(ws, guest) for ws in list(self.guests)]
         if self.hosts:
@@ -311,7 +320,19 @@ class Room:
             targets += [(ws, host) for ws in list(self.hosts)]
         if self.speaker:
             targets.append((self.speaker.ws, guest))
-        await self._send_all("state", targets)
+        msgs = [(ws, m) for ws, snap in targets if (m := self.sync.message(ws, snap)) is not None]
+        for kind in ("state", "patch"):
+            await self._send_all(kind, [(ws, m) for ws, m in msgs if m["type"] == kind])
+
+    async def broadcast(self):
+        """Push the current state to everyone, DEBOUNCE from now: a burst of changes goes out as one push."""
+        if self._flush is None or self._flush.done():
+            self._flush = asyncio.create_task(self._flush_later())
+
+    async def _flush_later(self):
+        await asyncio.sleep(DEBOUNCE)
+        self._flush = None  # changes made while this push is sending schedule the next one
+        await self.flush()
 
     async def broadcast_beat(self):
         msg = self.beat_msg()
@@ -324,12 +345,12 @@ class Room:
         last = self.feed[-1] if self.feed else None
         h = self.hands.setdefault(actor.key, {"count": 0})
         if kind == "volume" and last and last["kind"] == "volume" and last["key"] == actor.key and now - last["at"] < 8:
-            last.update(text=text, at=now)
+            last.update(text=text, at=now, ts=round(time.time()))
         else:
             self.feed.append({"id": uuid.uuid4().hex[:8], "key": actor.key, "who": actor.label, "name": actor.name,
-                              "initials": initials(actor.name), "kind": kind, "text": text, "at": now})
+                              "initials": initials(actor.name), "kind": kind, "text": text, "at": now, "ts": round(time.time())})
             h["count"] += 1
-        h["last"], h["at"] = text, now
+        h["last"], h["at"], h["ts"] = text, now, round(time.time())
         log.info("%s: %s", actor.label, text)
 
     # ---- queue mechanics
@@ -340,9 +361,17 @@ class Room:
         return it
 
     def prefetch_next(self):
+        """Fetch the next track ahead of time, once the queue has settled for PREFETCH_DELAY seconds.
+        Someone clearing or reordering the queue song by song starts one download, not one per change."""
+        if self._prefetch and not self._prefetch.done():
+            self._prefetch.cancel()
+        self._prefetch = asyncio.create_task(self._prefetch_later())
+
+    async def _prefetch_later(self):
+        await asyncio.sleep(PREFETCH_DELAY)
         nxt = self.next_item()
-        if nxt:
-            _quiet(resolver.load(nxt["videoId"]))
+        if nxt and not self.loading:  # while the current track loads, its _prepare prefetches afterwards
+            _quiet(resolver.load(nxt["videoId"], prefetch=True))
 
     async def advance(self, reason: str):
         """Move to the next track. Caller holds self.lock."""
@@ -666,6 +695,15 @@ def page(name: str):
 @app.get("/")
 async def guest_page():
     return page("guest.html")
+
+
+@app.get("/art/{aid}")
+async def artwork(aid: str, s: int = 120):
+    """Album art and artist images, from the disk cache (see artcache.py). Public pictures: no code needed."""
+    got = await art.get(aid, s)
+    if not got:
+        raise HTTPException(404)
+    return FileResponse(got[0], media_type=got[1], headers={"Cache-Control": "public, max-age=604800, immutable"})
 
 
 @app.get("/healthz")
@@ -1277,6 +1315,17 @@ async def reject(ws: WebSocket, status: int, reason: str):
         await ws.close(code=4029 if status == 429 else 4003, reason=reason)
 
 
+async def client_msg(ws: WebSocket):
+    """Guests and hosts only send keepalives, or {"type":"resync"} after missing a patch."""
+    try:
+        resync = json.loads(await ws.receive_text()).get("type") == "resync"
+    except (ValueError, AttributeError):
+        return
+    if resync:
+        room.sync.forget(ws)
+        await room.broadcast()
+
+
 @app.websocket("/ws")
 async def guest_ws(ws: WebSocket):
     """Guests: receive state and beats. They act over HTTP."""
@@ -1294,11 +1343,12 @@ async def guest_ws(ws: WebSocket):
     await room.broadcast()  # people changed
     try:
         while True:
-            await ws.receive_text()  # keepalives only
+            await client_msg(ws)  # keepalives, and resync requests
     except WebSocketDisconnect:
         pass
     finally:
         room.guests.pop(ws, None)
+        room.sync.forget(ws)
         await room.broadcast()
 
 
@@ -1314,11 +1364,12 @@ async def host_ws(ws: WebSocket):
     await room.broadcast()
     try:
         while True:
-            await ws.receive_text()
+            await client_msg(ws)
     except WebSocketDisconnect:
         pass
     finally:
         room.hosts.discard(ws)
+        room.sync.forget(ws)
         await room.broadcast()
 
 
@@ -1356,6 +1407,7 @@ async def speaker_ws(ws: WebSocket):
     except WebSocketDisconnect:
         pass
     finally:
+        room.sync.forget(ws)
         if room.speaker is sp:
             room.speaker = None
             room.playing = False
@@ -1386,6 +1438,9 @@ async def speaker_msg(sp: Speaker, m: dict):
             await room.broadcast_beat()
     elif kind == "name":
         sp.device = clean_name(m.get("device")) or sp.device
+        await room.broadcast()
+    elif kind == "resync":
+        room.sync.forget(sp.ws)
         await room.broadcast()
     elif kind in ("ended", "error"):
         async with room.lock:

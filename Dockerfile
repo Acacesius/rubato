@@ -14,7 +14,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # be writable by this user (compose's `user:` can override the UID/GID).
 RUN groupadd --gid 1000 rubato \
  && useradd --uid 1000 --gid 1000 --no-create-home --home-dir /tmp --shell /usr/sbin/nologin rubato \
- && mkdir -p /app/config && chown rubato:rubato /app/config
+ && mkdir -p /app/config /app/cache && chown rubato:rubato /app/config /app/cache
 COPY app/ app/
 COPY static/ static/
 

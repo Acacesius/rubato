@@ -1,7 +1,7 @@
 // Host dashboard: the speaker (volume, cap, key), the queue, the room code,
 // who has their hands on it, and engine health. Plays no audio.
 const key = localStorage.getItem("rubato.hostkey");
-let state = null, stateAt = 0, lastBeatAt = null, shownCode = null;
+let state = null, stateAt = 0, lastBeatAt = null, shownCode = null, renderedQkey = null;
 
 const H = () => ({ "X-Host-Key": key || "" });
 const post = (path, body) => fetch(path, { method: "POST", headers: { ...H(), "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
@@ -12,7 +12,10 @@ function connect() {
   ws.onopen = () => ws.send(JSON.stringify({ type: "auth", key }));
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
-    if (m.type === "state") apply(m);
+    if (m.type === "state" || m.type === "patch") {
+      const s = applyPatch(state, m);
+      if (s) apply(s); else ws.send('{"type":"resync"}');
+    }
     else if (m.type === "beat" && state && state.now && m.qid === state.now.qid) {
       lastBeatAt = performance.now();
       setProgress(m.qid, m.position, m.playing, state.now.duration);
@@ -32,11 +35,12 @@ $("mini-cone").append(miniCone);
 const spec = spectrum(40);
 $("prog-slot").replaceWith(spec.el);
 spec.el.classList.add("prog");
-const since = (secs) => (secs == null ? null : secs + (performance.now() - stateAt) / 1000);
 
 function apply(s) {
+  const prev = state;
   state = s;
   stateAt = performance.now();
+  setServerTime(s.server_time);
   const h = s.host, n = s.now, e = h.engine, sp = h.speaker;
   if (sp.beat_ago != null) lastBeatAt = performance.now() - sp.beat_ago * 1000;
 
@@ -85,11 +89,16 @@ function apply(s) {
 
   // queue
   $("q-sub").textContent = `${s.queue.length} song${s.queue.length === 1 ? "" : "s"} · ${Math.round(s.queue.reduce((a, t) => a + (t.duration || 0), 0) / 60)} min`;
-  if (!sorter.dragging) $("queue").replaceChildren(...(s.queue.length ? s.queue.map((t) => qrow(t, e)) : [el("div", { class: "empty", textContent: "Nothing queued. Search on the right to add songs." })]));
+  // Rebuild the rows only when the queue (or the "cached" note) changed: patches keep an unchanged queue identical.
+  const qkey = `${e.next_qid}|${e.next}`;
+  if (!sorter.dragging && (!prev || prev.queue !== s.queue || qkey !== renderedQkey)) {
+    renderedQkey = qkey;
+    $("queue").replaceChildren(...(s.queue.length ? s.queue.map((t) => qrow(t, e)) : [el("div", { class: "empty", textContent: "Nothing queued. Search on the right to add songs." })]));
+  }
   $("radio-block").classList.toggle("hidden", !s.radio);
   const last = s.queue.length ? s.queue[s.queue.length - 1] : n;
   $("radio-div").textContent = last ? `Radio takes over after ${last.title}` : "Radio";
-  $("auto").replaceChildren(...s.auto.slice(0, 5).map((t) => autorow(t)));
+  if (!prev || prev.auto !== s.auto) $("auto").replaceChildren(...s.auto.slice(0, 5).map((t) => autorow(t)));
 
   // room code, QR
   if (s.code !== shownCode) {
@@ -107,10 +116,10 @@ function renderHands() {
   $("h-count").textContent = `${h.hands.length} connected`;
   $("hands").replaceChildren(...(h.hands.length ? h.hands.map((p) => el("div", { class: "hrow" }, avatar(p.name, p.initials, "lg"),
     el("div", { style: "min-width:0" }, el("div", { class: "n ellip", textContent: p.label }),
-      el("div", { class: "l ellip", textContent: p.last ? `${p.last} · ${ago(since(p.ago))}` : p.device || "No moves yet" })),
+      el("div", { class: "l ellip", textContent: p.last ? `${p.last} · ${ago(sinceTs(p.ts))}` : p.device || "No moves yet" })),
     el("div", { class: "r" }, el("b", { textContent: p.count }), "moves"))) : [el("div", { class: "empty", textContent: "Nobody here yet. Share the code." })]));
   $("feed").replaceChildren(...(s.feed.length ? s.feed.slice(0, 8).map((f) => el("div", { class: "frow" }, avatar(f.name, f.initials, "sm"),
-    el("span", { class: "ellip" }, el("b", { textContent: f.who }), ` ${f.text}`), el("span", { class: "ago", textContent: ago(since(f.ago)) }))) : [el("div", { class: "empty", style: "padding:8px 0", textContent: "Every play, pause, skip and volume change shows up here." })]));
+    el("span", { class: "ellip" }, el("b", { textContent: f.who }), ` ${f.text}`), el("span", { class: "ago", textContent: ago(sinceTs(f.ts)) }))) : [el("div", { class: "empty", style: "padding:8px 0", textContent: "Every play, pause, skip and volume change shows up here." })]));
 }
 setInterval(() => state && renderHands(), 5000);
 
@@ -242,7 +251,7 @@ $("add-form").addEventListener("submit", async (e) => {
   const d = await r.json();
   if (d.open) return addCollection("playlist", d.open.id, "linked playlist");
   box.replaceChildren(...(d.results.length ? d.results.map((x) => el("div", { class: "trow" },
-    x.kind === "song" ? art(x) : x.thumb ? el("img", { class: "art", src: x.thumb, alt: "" }) : artPh(x, "art"),
+    x.kind === "song" ? art(x) : x.thumb ? el("img", { class: "art", src: artUrl(x.thumb), alt: "", loading: "lazy" }) : artPh(x, "art"),
     el("div", { class: "grow" }, el("div", { class: "t ellip", textContent: x.title }),
       el("div", { class: "s ellip", textContent: x.kind === "song" ? [x.artists, x.duration && fmt(x.duration)].filter(Boolean).join(" · ") : `${x.kind === "album" ? "Album" : "Playlist"} · ${x.subtitle}` })),
     el("div", { class: "acts" }, x.kind === "song"

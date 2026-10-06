@@ -3,3 +3,4 @@ config/*
 !config/.gitkeep
 cookies*.txt
 __pycache__/
+cache/

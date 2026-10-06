@@ -32,7 +32,10 @@ function connect() {
       loadedQid = null; // the old token is dead: reload the current track with the new one
       banner(null);
       beat();
-    } else if (m.type === "state") apply(m);
+    } else if (m.type === "state" || m.type === "patch") {
+      const s = applyPatch(state, m);
+      if (s) apply(s); else send({ type: "resync" });
+    }
     else if (m.type === "taken_over") stop("Taken over", `Another device${m.by ? ` (${m.by})` : ""} opened the speaker link and is playing now. Only one speaker plays at a time.`, "Take it back");
     else if (m.type === "disconnected") stop("Disconnected", "The host disconnected this speaker.", "Reconnect");
     else if (m.type === "revoked") stop("Key rotated", "The host rotated the speaker key. Open the new speaker link on this device.", null, true);
