@@ -92,10 +92,15 @@
         </div>
         <div class="np-ctl">
           <div id="prog-slot" class="prog"></div>
-          <button class="big dark" id="back" aria-label="Previous song" disabled></button>
-          <button class="big red" id="pause" aria-label="Pause" disabled></button>
-          <button class="big dark" id="skip" aria-label="Skip song" disabled></button>
-          <button class="big dark like" id="like" aria-pressed="false" aria-label="Like on YouTube Music" disabled></button>
+          <div class="controls">
+            <span></span>
+            <div class="transport" role="group" aria-label="Playback">
+              <button class="ctl" id="back" aria-label="Previous song" disabled></button>
+              <button class="big red" id="pause" aria-label="Pause" disabled></button>
+              <button class="ctl" id="skip" aria-label="Skip song" disabled></button>
+            </div>
+            <div class="ctl-end"><button class="ctl like" id="like" aria-pressed="false" aria-label="Like on YouTube Music" disabled></button></div>
+          </div>
         </div>
       </section>
       <section class="card" aria-label="Queue">

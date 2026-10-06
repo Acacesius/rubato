@@ -203,15 +203,31 @@ nav.tabbar button[aria-current=page] { color: var(--red); }
 .remote .np-title { margin: 8px 0 0; font-size: 40px; max-width: 100%; }
 .remote .np-sub { margin: 6px 0 0; font-size: 15px; color: var(--muted); max-width: 100%; }
 .remote .prog { width: 100%; margin-top: 18px; }
-.ctlrow { width: 100%; margin-top: 14px; display: flex; align-items: center; justify-content: space-between; }
-.big { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
+/* ---- playback controls: one transport group (back · play · skip), centred. Two sizes only: play
+   (72px on phones, 64px on the host) and every other control (52px). All at least 44px to tap. */
+.transport { display: flex; align-items: center; justify-content: center; gap: 18px; }
+.remote .transport { margin-top: 16px; }
+.big { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
 .big.red { background: var(--red); color: var(--on-red); box-shadow: 0 0 24px color-mix(in srgb, var(--red) 35%, transparent); }
-.big.dark { background: var(--raised); border: 1px solid var(--border); color: var(--text); }
+.ctl { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; background: var(--raised); border: 1px solid var(--border); color: var(--text); }
+.ctl svg.i { width: 22px; height: 22px; }
+.big, .ctl { transition: background .15s ease-out, border-color .15s ease-out, transform .1s ease-out; }
+.ctl:hover:not(:disabled) { border-color: var(--grip); }
+.big.red:hover:not(:disabled) { background: var(--red-hi); }
+.big:active:not(:disabled), .ctl:active:not(:disabled) { transform: scale(.94); }
+.big:disabled, .ctl:disabled { opacity: .4; }
+/* Focus: a text-coloured ring clear of the button, so it shows on the red play button and in every theme. */
+.transport :focus-visible, .ctl:focus-visible, .linkbtn:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
+/* volume: the dial (display) next to the range input (the control) */
+.volgroup { width: 100%; margin-top: 14px; display: flex; align-items: center; gap: 16px; }
+.volgroup .dial { width: 104px; height: 104px; }
+.volgroup .dial .num b { font-size: 34px; }
+.volgroup .volrow { flex: 1; min-width: 0; margin-top: 0; }
 /* Like (host): the heart fills when the song is in the host's liked songs */
 .like[aria-pressed=true] { color: var(--red); border-color: var(--red); }
 .like[aria-pressed=true] svg.i path { fill: currentColor; }
 .like.busy { opacity: .6; }
-.big svg.i { width: 26px; height: 26px; stroke-width: 2.4; }
+.big svg.i { width: 28px; height: 28px; stroke-width: 2.4; }
 .volrow { width: 100%; margin-top: 4px; text-align: left; }
 .volrow label { display: flex; justify-content: space-between; }
 
@@ -325,7 +341,7 @@ nav.tabbar button[aria-current=page] { color: var(--red); }
 .btnrow { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .head-r { display: inline-flex; align-items: baseline; gap: 14px; }
 /* small text button with a full 44px hit area that doesn't grow the row */
-.linkbtn { margin: -13px -10px; padding: 13px 10px; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); border-radius: 10px; }
+.linkbtn { margin: -16px -10px; padding: 16px 10px; line-height: 12px; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); border-radius: 10px; }
 .linkbtn:hover:not(:disabled) { color: var(--red-hi); }
 .erow { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--hair); font-size: 14px; color: var(--muted); }
 .erow .v { font-family: var(--mono); font-size: 13px; color: var(--text); text-align: right; }
@@ -335,9 +351,11 @@ nav.tabbar button[aria-current=page] { color: var(--red); }
 .np .art.ph { font-size: 44px; }
 .np .t { margin-top: 8px; font-size: 44px; }
 .np .s { margin-top: 8px; font-size: 16px; color: var(--muted); }
-.np-ctl { margin-top: 16px; display: flex; align-items: center; gap: 14px; }
-.np-ctl .prog { flex: 1; min-width: 0; }
-.np-ctl .big { width: 56px; height: 56px; }
+.np-ctl { margin-top: 16px; }
+/* Host: the bar on its own row, then the transport centred with Like at the end. */
+.np-ctl .controls { margin-top: 10px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; }
+.np-ctl .ctl-end { justify-self: end; display: flex; gap: 10px; }
+.np-ctl .big { width: 64px; height: 64px; }
 .host .trow { min-height: 64px; }
 .host .trow .who { display: flex; align-items: center; gap: 8px; width: 120px; font-size: 13px; color: var(--muted); min-width: 0; }
 .addbox { position: relative; }

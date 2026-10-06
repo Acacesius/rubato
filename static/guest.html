@@ -59,15 +59,17 @@
     <h2 class="display np-title ellip" id="np-title">Nothing playing</h2>
     <p class="np-sub ellip" id="np-sub">Search for a song to get the room going</p>
     <div id="prog-slot" style="width:100%"></div>
-    <div class="ctlrow">
-      <button class="big dark" id="back" aria-label="Previous song" disabled></button>
+    <div class="transport" role="group" aria-label="Playback">
+      <button class="ctl" id="back" aria-label="Previous song" disabled></button>
       <button class="big red" id="pause" aria-label="Pause" disabled></button>
-      <div id="dial-slot"></div>
-      <button class="big dark" id="skip" aria-label="Skip song" disabled></button>
+      <button class="ctl" id="skip" aria-label="Skip song" disabled></button>
     </div>
-    <div class="volrow">
-      <label class="label" for="vol"><span>Speaker volume</span><span class="mono" id="vol-v" style="color:var(--text)"></span></label>
-      <input id="vol" type="range" min="0" max="80" value="60" step="1">
+    <div class="volgroup" role="group" aria-label="Speaker volume">
+      <div id="dial-slot"></div>
+      <div class="volrow">
+        <label class="label" for="vol"><span>Speaker volume</span><span class="mono" id="vol-v" style="color:var(--text)"></span></label>
+        <input id="vol" type="range" min="0" max="80" value="60" step="1">
+      </div>
     </div>
     <div id="last-hand" style="margin-top:8px;max-width:100%"></div>
   </section>

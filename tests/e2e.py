@@ -262,6 +262,26 @@ def main():
         for pg in (maya, host, speaker):
             pg.evaluate("applyTheme('')")
 
+        # Controls: one size for play, one for everything else, all at least 44px; a visible focus ring.
+        maya.click("nav.tabbar [data-tab=speaker]")
+        sizes = {pg_name: pg.evaluate("""() => ['back', 'pause', 'skip', 'like', 'clear-queue', 'theme-btn'].filter(id => document.getElementById(id))
+            .map(id => { const b = document.getElementById(id), r = b.getBoundingClientRect(), cs = getComputedStyle(b);
+                         return [id, Math.round(r.width), Math.round(r.height), parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom)]; })""")
+                 for pg_name, pg in (("guest", maya), ("host", host))}
+        check("controls: play 72px (phone) / 64px (host), back, skip and like 52px", lambda: (
+            dict((i, w) for i, w, h, _ in sizes["guest"]) == {"back": 52, "pause": 72, "skip": 52, "theme-btn": 44} or fail(str(sizes["guest"])),
+            all(w == {"pause": 64}.get(i, 52) for i, w, h, _ in sizes["host"] if i in ("back", "pause", "skip", "like")) or fail(str(sizes["host"]))))
+        check("controls: every target is at least 44px tall (padding included)", lambda: all(h >= 44 for pg in sizes.values() for _, w, h, _ in pg) or fail(str(sizes)))
+        maya.keyboard.press("Tab")  # focus by keyboard, so :focus-visible applies
+        maya.focus("#pause")
+        maya.keyboard.press("Shift+Tab")
+        maya.keyboard.press("Tab")
+        check("controls: keyboard focus shows a ring", lambda: maya.wait_for_function(
+            "() => document.activeElement.id === 'pause' && getComputedStyle(document.activeElement).outlineStyle === 'solid' && parseFloat(getComputedStyle(document.activeElement).outlineWidth) >= 2", timeout=3000))
+        if a.shots:
+            maya.screenshot(path=f"{a.shots}/guest-controls.png")
+            host.screenshot(path=f"{a.shots}/host-controls.png")
+
         for c in (maya_ctx, theo_ctx, sp_ctx, host_ctx):
             c.close()
         browser.close()
