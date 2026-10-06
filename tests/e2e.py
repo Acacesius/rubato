@@ -272,10 +272,12 @@ def main():
             dict((i, w) for i, w, h, _ in sizes["guest"]) == {"back": 52, "pause": 72, "skip": 52, "theme-btn": 44} or fail(str(sizes["guest"])),
             all(w == {"pause": 64}.get(i, 52) for i, w, h, _ in sizes["host"] if i in ("back", "pause", "skip", "like")) or fail(str(sizes["host"]))))
         check("controls: every target is at least 44px tall (padding included)", lambda: all(h >= 44 for pg in sizes.values() for _, w, h, _ in pg) or fail(str(sizes)))
-        maya.keyboard.press("Tab")  # focus by keyboard, so :focus-visible applies
-        maya.focus("#pause")
-        maya.keyboard.press("Shift+Tab")
-        maya.keyboard.press("Tab")
+        maya.wait_for_function("() => state && state.now && !document.getElementById('back').disabled", timeout=10000)  # live after the reload
+        maya.focus("#back")  # then Tab by keyboard, so :focus-visible applies
+        for _ in range(4):
+            maya.keyboard.press("Tab")
+            if maya.evaluate("() => document.activeElement.id") == "pause":
+                break
         check("controls: keyboard focus shows a ring", lambda: maya.wait_for_function(
             "() => document.activeElement.id === 'pause' && getComputedStyle(document.activeElement).outlineStyle === 'solid' && parseFloat(getComputedStyle(document.activeElement).outlineWidth) >= 2", timeout=3000))
         if a.shots:

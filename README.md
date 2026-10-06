@@ -35,8 +35,8 @@ It's also a sister to [cesura](https://github.com/acacesius/cesura). Rubidium (R
 ## What it is
 
 - **One speaker, many remotes.** cesura plays the song on every phone in sync. rubato plays it on exactly one device, and the phones only control it. Nothing to keep in sync, and it works with a real sound system.
-- **For guests:** join with the code and your name, then search songs, albums and playlists (or paste a YouTube link), queue, drag to reorder, remove, play/pause, skip, and set the speaker's volume up to the host's cap.
-- **Hands on it:** every queue, remove, reorder, play, pause, skip and volume change is recorded with who did it. The speaker shows the last few, and the dashboard shows everyone connected with their last move.
+- **For guests:** join with the code and your name, then search songs, albums and playlists (or paste a YouTube link), queue, drag to reorder, remove, play/pause, skip, go back, seek, and set the speaker's volume up to the host's cap.
+- **Hands on it:** every queue, remove, reorder, play, pause, skip, back, seek, clear and volume change is recorded with who did it. The speaker shows the last few, and the dashboard shows everyone connected with their last move.
 - **For the host:** a dashboard with the speaker (live/offline, last heartbeat, volume, guest volume cap, rotate key, disconnect), the queue, autoplay radio, room code + QR, and engine health (account, stream quality, cache).
 - **One container, no database, no accounts.** Everything lives in memory except `config/`. There's a first-run setup wizard, prebuilt images for amd64 and arm64, and a weekly rebuild with the latest yt-dlp.
 
@@ -45,7 +45,7 @@ It's also a sister to [cesura](https://github.com/acacesius/cesura). Rubidium (R
 You need Docker with the Compose plugin, and a YouTube Music account. Premium gets 256k AAC; without it, 128k.
 
 ```sh
-mkdir -p rubato/config && cd rubato
+mkdir -p rubato/config rubato/cache && cd rubato
 curl -fsSLO https://raw.githubusercontent.com/acacesius/rubato/main/docker-compose.yml
 docker compose up -d && docker compose logs rubato
 ```
@@ -67,7 +67,7 @@ The logs show a box with your **one-time setup token**:
 
 Open `http://127.0.0.1:8766/setup` on the same machine, or through the address you expose it on (see [Exposing it](#exposing-it)). Then paste the token. Lost it? Run `docker compose logs rubato` again: it's printed on every start until setup is done.
 
-> Create `config/` **before** the first `up` (the first command above does). If Docker creates it, it's owned by root, and rubato will print how to fix it.
+> Create `config/` and `cache/` **before** the first `up` (the first command above does). If Docker creates them, they're owned by root, and rubato will print how to fix `config/`.
 
 ## The setup wizard
 
@@ -88,6 +88,17 @@ Open the speaker link on the device that will play, and tap **Tap to start speak
 - **If it goes quiet** (closed, crashed, lost Wi-Fi), everyone sees **Speaker offline** within 5 seconds and the room is paused. When it comes back, it picks up where it was.
 - **The key is only for the speaker.** The key in the link never reaches the server's logs (it's after the `#`). The page trades it for a per-session token, and only that token can fetch audio. A takeover, a disconnect or **Rotate key** on the dashboard ends the token. The room code alone can't fetch audio.
 - **Volume** is the speaker's volume, set from any phone and capped by the host's **Guest volume cap**. The host can go above the cap. It also works when the speaker is an iPhone, because rubato sets it through Web Audio.
+
+## The remote
+
+- **Transport:** back · play · skip, for everyone in the room.
+- **Seek:** click or drag the spectral bar, or focus it and use the arrow keys (5 s; Page Up/Down 30 s). Nothing is sent while you drag; one jump on release. The speaker jumps there and the room sees who did it.
+- **Back:** restarts the song once it has played 3 seconds, otherwise goes to the previous one, even after a skip (the server keeps the last 30). The song you left goes back to the top of the queue.
+- **Drag to reorder:** the grip on a queue row, by mouse, touch or arrow keys. If someone else moved the queue first, your drag is refused and the list redraws.
+- **Like** (host only): the heart on the dashboard adds the song to your YouTube Music liked songs, which feeds your radio; press again to un-like. If YouTube refuses, you see the error and nothing changes.
+- **Clear** (host only, on the queue card): removes every upcoming song after asking. The current song, the play history and the radio picks stay.
+- **Themes:** the palette button on the remote and the speaker, or Settings → *Theme* on the dashboard: Rubidium (default), Sakura, Night sakura, Matcha, Lavender, Ocean, Sunset, Paper and Mono. Each person's pick is kept in their own browser.
+- **Artist panel:** on a wide screen (1100 px and up), the remote shows the current artist's image, name and a short bio beside it. From YouTube Music, cached per artist for a day. Phones never load it.
 
 ## Linking YouTube Music
 
@@ -132,7 +143,9 @@ Put these in a `.env` file next to `docker-compose.yml` (copy [`.env.example`](.
 | `HOST_KEY` | *(from setup)* | Host dashboard key. Overrides the wizard's key. |
 | `SPEAKER_KEY` | *(from setup)* | Speaker key. Overrides the wizard's key, and disables Rotate key on the dashboard. |
 | `PROBE_VIDEO_ID` | `BSTsnWoslP4` | Song used by the link check. Change it if that one is unavailable where you are. |
-| `RUBATO_UID` / `RUBATO_GID` | `1000` | User the container runs as. It must own `./config`. |
+| `DOWNLOAD_RATE` | `2` | Speed cap for fetching songs from YouTube, in MB/s (`2` ≈ 16 Mbit/s; `0` = no cap). Songs download one at a time (the current one, then the next), so one download can't fill your link. |
+| `ART_CACHE_MB` | `300` | Size of the artwork cache in `./cache` (album art, artist images). Phones load artwork from rubato, not from Google; the oldest files go first. |
+| `RUBATO_UID` / `RUBATO_GID` | `1000` | User the container runs as. It must own `./config` and `./cache`. |
 | `MEM_LIMIT` | `1g` | Container memory limit. Songs are held in RAM: the current one, the next, and a couple of recent ones. |
 | `YTM_CLIENT_ID` / `YTM_CLIENT_SECRET` | | Only for optional ytmusicapi OAuth (personalised radio). Not needed. |
 
@@ -226,7 +239,7 @@ To check a running install: `docker compose exec rubato python -m app.selftest`
 
 ```sh
 git clone https://github.com/acacesius/rubato && cd rubato
-mkdir -p config
+mkdir -p config cache
 docker compose -f docker-compose.dev.yml up -d --build
 python3 tests/smoke.py --image rubato:dev     # the same smoke test CI runs before publishing
 ```

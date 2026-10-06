@@ -44,6 +44,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("rubato")
 logging.getLogger("httpx").setLevel(logging.WARNING)  # its INFO lines contain signed googlevideo URLs
 
+VERSION = "0.2.0"
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/app/config")
 ENV_PUBLIC_URL = os.environ.get("PUBLIC_URL", "").strip().rstrip("/")
 
@@ -774,7 +775,7 @@ async def artwork(aid: str, s: int = 120):
 @app.get("/healthz")
 async def healthz():
     """Container healthcheck: the web server is up. No auth, no state, no secrets."""
-    return {"ok": True, "setup_complete": setupstate.is_complete(), "youtube": resolver.cookie_health()}
+    return {"ok": True, "version": VERSION, "setup_complete": setupstate.is_complete(), "youtube": resolver.cookie_health()}
 
 
 @app.get("/host")
