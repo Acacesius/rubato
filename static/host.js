@@ -89,6 +89,8 @@ function apply(s) {
   $("pause").innerHTML = icon(s.paused ? "play" : "pause");
   $("pause").setAttribute("aria-label", s.paused ? "Play" : "Pause");
 
+  renderLike();
+
   // queue
   $("clear-queue").disabled = !s.queue.length;
   $("q-sub").textContent = `${s.queue.length} song${s.queue.length === 1 ? "" : "s"} · ${Math.round(s.queue.reduce((a, t) => a + (t.duration || 0), 0) / 60)} min`;
@@ -170,6 +172,33 @@ $("back").addEventListener("click", async () => {
   if (r.ok && (await r.json()).did === "restarted") toast("Restarted");
 });
 setInterval(() => $("back").setAttribute("aria-label", state && state.now && curPos() > 3 ? "Restart song" : "Previous song"), 1000);
+// Like (host only, enforced by the server): adds the song to your YouTube Music liked songs, which
+// feeds your radio; pressed again un-likes it. A YouTube error shows here and nothing changes.
+let likeBusy = false;
+function renderLike() {
+  const n = state && state.now, on = !!(state && state.liked);
+  $("like").disabled = !n || likeBusy;
+  $("like").setAttribute("aria-pressed", String(on));
+  $("like").setAttribute("aria-label", on ? "Liked on YouTube Music. Press to un-like" : "Like on YouTube Music");
+  $("like").title = on ? "In your liked songs" : "Add to your YouTube Music liked songs";
+  $("like").classList.toggle("busy", likeBusy);
+}
+$("like").innerHTML = icon("heart");
+$("like").addEventListener("click", async () => {
+  const n = state && state.now;
+  if (!n || likeBusy) return;
+  const on = !state.liked;
+  likeBusy = true;
+  renderLike();
+  try {
+    const r = await post("api/host/like", { videoId: n.videoId, on });
+    const d = await r.json().catch(() => ({}));
+    toast(r.ok ? (on ? `Liked ${n.title}` : `Removed ${n.title} from liked songs`) : d.detail || "YouTube Music didn't accept that.");
+  } catch { toast("Couldn't reach the server. Nothing was changed."); }
+  likeBusy = false;
+  renderLike();
+});
+
 // Clear queue (host only, enforced by the server): upcoming songs go; now playing and history stay.
 $("clear-queue").addEventListener("click", async () => {
   const n = state ? state.queue.length : 0;

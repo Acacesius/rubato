@@ -205,6 +205,20 @@ def main():
             speaker.wait_for_function("() => !document.getElementById('audio').paused", timeout=3000)))
         check("clear: in the feed", lambda: expect(host.locator("#feed")).to_contain_text("cleared the queue", timeout=5000))
 
+        # Like: the host's heart; a guest's request is refused by the server, and guests have no button.
+        status = maya.evaluate("""async () => (await fetch('api/host/like', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: state.code, sid: localStorage.getItem('rubato.sid'), videoId: state.now.videoId, on: true }) })).status""")
+        check("like: a guest's request is refused (403) and guests have no button", lambda: (
+            status == 403 or fail(f"got {status}"), expect(maya.locator("#like")).to_have_count(0)))
+        expect(host.locator("#like")).to_be_enabled(timeout=5000)
+        host.click("#like")
+        check("like: heart fills, toast confirms, feed records it", lambda: (
+            expect(host.locator("#like")).to_have_attribute("aria-pressed", "true", timeout=5000),
+            expect(host.locator("#toast")).to_contain_text("Liked"),
+            expect(host.locator("#feed")).to_contain_text("liked")))
+        host.click("#like")
+        check("like: pressing again un-likes", lambda: expect(host.locator("#like")).to_have_attribute("aria-pressed", "false", timeout=5000))
+
         for c in (maya_ctx, theo_ctx, sp_ctx, host_ctx):
             c.close()
         browser.close()

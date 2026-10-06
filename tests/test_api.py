@@ -175,3 +175,41 @@ def test_clear_queue_is_host_only_and_keeps_now_and_history(client):
     assert client.post("/api/host/clear", headers=H).json() == {"ok": True, "removed": 3}
     assert room.queue == [] and room.now is now and list(room.back_stack) == history
     assert room.feed[-1]["kind"] == "clear" and room.feed[-1]["text"] == "cleared the queue (3 songs)"
+
+
+class FakeYT:
+    def __init__(self, fail=False):
+        self.calls, self.fail = [], fail
+
+    def rate_song(self, vid, rating):
+        if self.fail:
+            raise RuntimeError("Server returned HTTP 401: Unauthorized")
+        self.calls.append((vid, rating))
+        return {"actions": []}
+
+    def get_watch_playlist(self, videoId, limit=1):
+        return {"tracks": [{"videoId": videoId, "likeStatus": "INDIFFERENT"}]}
+
+
+def test_like_is_host_only_reports_errors_and_unlikes(client, monkeypatch):
+    sid = join(client)
+    room = main.room
+    post(client, "/api/add", sid, videoIds=ids(1))
+    vid = room.now["videoId"]
+    yt = FakeYT()
+    monkeypatch.setattr(main, "cookie_ytmusic", lambda path=None: yt)
+    monkeypatch.setattr(main.resolver, "cookie_health", lambda: "valid")
+    # A guest (room code and session) is refused by the server, whatever they send.
+    assert post(client, "/api/host/like", sid, videoId=vid, on=True).status_code == 403
+    assert yt.calls == []
+    r = client.post("/api/host/like", json={"videoId": vid, "on": True}, headers=H)
+    assert r.json() == {"ok": True, "liked": True} and yt.calls == [(vid, "LIKE")]
+    assert room.snapshot("host")["liked"] is True
+    assert "liked" not in room.snapshot()   # guests and the speaker never see it
+    assert room.feed[-1]["kind"] == "like"
+    client.post("/api/host/like", json={"videoId": vid, "on": False}, headers=H)
+    assert yt.calls[-1] == (vid, "INDIFFERENT") and room.liked[vid] is False
+    # YouTube says no: the host sees the error and nothing pretends it worked.
+    monkeypatch.setattr(main, "cookie_ytmusic", lambda path=None: FakeYT(fail=True))
+    r = client.post("/api/host/like", json={"videoId": vid, "on": True}, headers=H)
+    assert r.status_code == 502 and "Nothing was changed" in r.json()["detail"] and room.liked[vid] is False

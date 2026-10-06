@@ -49,6 +49,18 @@ async def _download(self, video_id: str):
     return media.Media(data, len(data), "audio/wav", SECONDS)
 
 
+class FakeAccount:
+    """Stands in for ytmusicapi signed in as the host (the Like button)."""
+    liked: dict = {}
+
+    def rate_song(self, video_id, rating="INDIFFERENT"):
+        self.liked[video_id] = rating
+        return {"actions": []}
+
+    def get_watch_playlist(self, videoId, limit=1):
+        return {"tracks": [{"videoId": videoId, "likeStatus": self.liked.get(videoId, "INDIFFERENT")}]}
+
+
 def fake_upstream(size: int) -> int:
     """FAKE_UPSTREAM=1 (tests/netbench.py): keep the real download path (prefetch, RAM cache, network
     accounting) and fake only YouTube: yt-dlp "resolves" in a second to a local server that serves
@@ -103,6 +115,7 @@ media.probe_account = lambda: {"account": True, "name": "Test", "premium": True,
 
 if __name__ == "__main__":
     from app import main
+    main.cookie_ytmusic = lambda path=None: FakeAccount()
     if os.environ.get("FAKE_CODE"):  # screenshots: a fixed, obviously fake room code
         main.room.code = os.environ["FAKE_CODE"]
     uvicorn.run(main.app, host="0.0.0.0", port=8766, log_level="info")

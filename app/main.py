@@ -38,7 +38,7 @@ from . import setup as setupstate
 from .artcache import art
 from .delta import Sync, dumps
 from .netstats import net
-from .media import COOKIES, PROBE_VIDEO_ID, Resolver, _thumb, make_ytmusic, probe_account, song_to_track, to_track
+from .media import COOKIES, PROBE_VIDEO_ID, Resolver, _thumb, cookie_ytmusic, make_ytmusic, probe_account, song_to_track, to_track
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("rubato")
@@ -160,6 +160,7 @@ class Room:
         self.hands: dict[str, dict] = {}             # actor key -> {count, last, at}
         self.history: deque[str] = deque(maxlen=200)  # videoIds, keeps radio from repeating
         self.back_stack: deque[dict] = deque(maxlen=30)  # tracks that played, newest last: what Back goes to
+        self.liked: dict[str, bool] = {}  # videoId -> liked on the host's YouTube Music (host dashboards only)
         self.add_log: dict[str, deque] = {}
         self.act_log: dict[str, deque] = {}
         self.lock = asyncio.Lock()
@@ -292,6 +293,7 @@ class Room:
         }
         if role == "host":
             s["host"] = self.host_panel()
+            s["liked"] = self.liked.get(self.now["videoId"]) if self.now else None  # None = not known yet
         return s
 
     def beat_msg(self) -> dict:
@@ -449,6 +451,8 @@ class Room:
                     item["duration"] = media.duration
                 self.loading = False
                 self.prefetch_next()
+                if self.hosts:
+                    asyncio.create_task(fetch_like(item["videoId"]))
         await self.broadcast()
 
     async def failed(self, why: str):
@@ -1170,6 +1174,63 @@ async def host_clear(request: Request):
     return {"ok": True, "removed": n}
 
 
+LIKE_CHECKS: set[str] = set()
+
+
+async def fetch_like(video_id: str):
+    """Whether the host has liked this song, for the dashboard's heart. One lookup per song, host only."""
+    if video_id in room.liked or video_id in LIKE_CHECKS or resolver.cookie_health() == "missing":
+        return
+
+    def lookup():
+        tracks = cookie_ytmusic().get_watch_playlist(videoId=video_id, limit=1).get("tracks") or []
+        return next((t.get("likeStatus") for t in tracks if t.get("videoId") == video_id), None)
+    LIKE_CHECKS.add(video_id)
+    try:
+        status = await asyncio.to_thread(lookup)
+    except Exception as e:
+        log.info("like status for %s failed: %s", video_id, type(e).__name__)
+        return
+    finally:
+        LIKE_CHECKS.discard(video_id)
+    if status in ("LIKE", "INDIFFERENT", "DISLIKE") and video_id not in room.liked:
+        room.liked[video_id] = status == "LIKE"
+        await room.broadcast()
+
+
+class LikeBody(BaseModel):
+    videoId: str
+    on: bool
+
+
+@app.post("/api/host/like")
+async def host_like(body: LikeBody, request: Request):
+    """Like (or un-like: INDIFFERENT) a song on the host's YouTube Music account, which feeds their
+    radio. Host key only: a guest's request is refused by the server. A YouTube error is reported
+    as-is (502) and the liked state stays as it was."""
+    require_host(request)
+    if not VIDEO_ID.fullmatch(body.videoId):
+        raise HTTPException(400, "bad videoId")
+    if resolver.cookie_health() == "missing":
+        raise HTTPException(409, "Link YouTube Music first.")
+    rating = "LIKE" if body.on else "INDIFFERENT"
+
+    def rate():
+        return cookie_ytmusic().rate_song(body.videoId, rating)
+    try:
+        res = await asyncio.to_thread(rate)
+    except Exception as e:
+        log.warning("rate_song %s %s failed: %s: %s", body.videoId, rating, type(e).__name__, str(e)[:200])
+        raise HTTPException(502, f"YouTube Music didn't accept that ({type(e).__name__}). Nothing was changed.")
+    if not isinstance(res, dict):
+        raise HTTPException(502, "YouTube Music sent an unexpected answer. Nothing was changed.")
+    room.liked[body.videoId] = body.on
+    title = room.now["title"] if room.now and room.now["videoId"] == body.videoId else body.videoId
+    room.record(host_actor(), "like", f"{'liked' if body.on else 'un-liked'} {title}")
+    await room.broadcast()
+    return {"ok": True, "liked": body.on}
+
+
 @app.post("/api/host/name")
 async def host_set_name(body: NameBody, request: Request):
     require_host(request)
@@ -1467,6 +1528,8 @@ async def host_ws(ws: WebSocket):
     if status:
         return await reject(ws, status, "bad host key")
     room.hosts.add(ws)
+    if room.now and not room.loading:
+        asyncio.create_task(fetch_like(room.now["videoId"]))
     await room.broadcast()
     try:
         while True:

@@ -201,6 +201,10 @@ nav.tabbar button[aria-current=page] { color: var(--red); }
 .big { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; }
 .big.red { background: var(--red); color: var(--on-red); box-shadow: 0 0 24px rgba(242, 80, 106, .35); }
 .big.dark { background: var(--raised); border: 1px solid var(--border); color: var(--text); }
+/* Like (host): the heart fills when the song is in the host's liked songs */
+.like[aria-pressed=true] { color: var(--red); border-color: var(--red); }
+.like[aria-pressed=true] svg.i path { fill: currentColor; }
+.like.busy { opacity: .6; }
 .big svg.i { width: 26px; height: 26px; stroke-width: 2.4; }
 .volrow { width: 100%; margin-top: 4px; text-align: left; }
 .volrow label { display: flex; justify-content: space-between; }
