@@ -16,6 +16,8 @@ let ctx = null, gain = null, wakeLock = null;
 const coneEl = cone("min(460px, 42vh, 34vw)");
 $("cone-slot").prepend(coneEl);
 $("tap-ic").innerHTML = icon("play");
+$("theme-btn").innerHTML = icon("palette");
+$("theme-btn").addEventListener("click", openThemes);
 const spec = spectrum(56, "Rb · 780.24 nm");
 $("prog-slot").append(spec.el);
 $("dev-name").value = localStorage.getItem("rubato.device") || "";

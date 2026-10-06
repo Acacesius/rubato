@@ -289,6 +289,8 @@ $("relink-close").addEventListener("click", closeModals);
 $("relink-modal").addEventListener("click", (e) => e.target.id === "relink-modal" && closeModals());
 document.addEventListener("keydown", (e) => e.key === "Escape" && closeModals());
 $("pop-relink").replaceChildren(ic("upload"), "Relink YouTube");
+$("pop-theme").replaceChildren(ic("palette"), "Theme");
+$("pop-theme").addEventListener("click", () => { $("settings-pop").classList.add("hidden"); openThemes(); });
 $("pop-guest").replaceChildren(ic("external"), "Open guest view");
 $("add-ic").innerHTML = icon("search");
 

@@ -1,0 +1,33 @@
+/* Built-in themes. A theme is only a set of token values: every colour in rubato comes from these
+   variables. No data-theme (the default) is Rubidium, defined in rubato.css. Chosen per viewer in the
+   theme picker (common.js), saved in this browser. Checked for WCAG AA text contrast. */
+/* Derived tokens: every theme computes these from its own colours. */
+:root[data-theme] {
+  --red-glow: 0 0 12px var(--red); --elapsed: color-mix(in srgb, var(--red) 12%, transparent);
+  --line-past: color-mix(in srgb, var(--red) 55%, var(--surface)); --line-ahead: var(--border);
+  --cone-in: color-mix(in srgb, var(--surface) 75%, var(--raised)); --cone-mid: color-mix(in srgb, var(--ground) 50%, var(--surface));
+}
+:root[data-theme="sakura"] {
+  --scheme: light; --ground: #FBF3F5; --surface: #FFFFFF; --raised: #F6E7EC; --inset: #FFFFFF; --hair: #EED8DF; --border: #E5C8D1; --text: #3A2830; --muted: #735A64; --grip: #80646F; --red: #C2406A; --red-hi: #D9608A; --on-red: #FFFFFF; --amber: #A8620F; --shadow: #5A283C33; --shadow-lg: #5A283C33; --scrim: #3A283066; --av0-bg: #F6D5DB; --av0-fg: #7A2E3B; --av1-bg: #DCDAF5; --av1-fg: #3E3A7A; --av2-bg: #D3EBDD; --av2-fg: #245039; --av3-bg: #F3E6C4; --av3-fg: #6A5014; --av4-bg: #EBD8EE; --av4-fg: #5E2F66;
+}
+:root[data-theme="yozakura"] {
+  --scheme: dark; --ground: #140F14; --surface: #1C151C; --raised: #261C25; --inset: #140F14; --hair: #2E222D; --border: #382937; --text: #F3E6EC; --muted: #B39AA8; --grip: #9C8393; --red: #F49AC1; --red-hi: #FFC2DC; --on-red: #2A0F1C; --amber: #F4B544; --shadow: #000000aa; --shadow-lg: #000000aa; --scrim: #000000bb;
+}
+:root[data-theme="matcha"] {
+  --scheme: dark; --ground: #0F1410; --surface: #161D17; --raised: #1E2720; --inset: #0F1410; --hair: #253027; --border: #2D3A2F; --text: #E9EEE4; --muted: #9FAE9C; --grip: #879784; --red: #A8D672; --red-hi: #C8EC9A; --on-red: #142008; --amber: #E8B04A; --shadow: #000000aa; --shadow-lg: #000000aa; --scrim: #000000bb;
+}
+:root[data-theme="lavender"] {
+  --scheme: dark; --ground: #12111A; --surface: #1A1824; --raised: #23202F; --inset: #12111A; --hair: #2A2738; --border: #332F44; --text: #ECEAF4; --muted: #A7A2BC; --grip: #8F8AA7; --red: #B9A6F2; --red-hi: #D6CAFF; --on-red: #1A1230; --amber: #F4B544; --shadow: #000000aa; --shadow-lg: #000000aa; --scrim: #000000bb;
+}
+:root[data-theme="ocean"] {
+  --scheme: dark; --ground: #0B1218; --surface: #111B23; --raised: #18242E; --inset: #0B1218; --hair: #1E2C37; --border: #253541; --text: #E6EEF2; --muted: #98AAB5; --grip: #80949F; --red: #4FD1C5; --red-hi: #85E6DC; --on-red: #04201D; --amber: #F4B544; --shadow: #000000aa; --shadow-lg: #000000aa; --scrim: #000000bb;
+}
+:root[data-theme="sunset"] {
+  --scheme: dark; --ground: #16100E; --surface: #1F1714; --raised: #2A1F1B; --inset: #16100E; --hair: #33261F; --border: #3D2D25; --text: #F6ECE6; --muted: #B8A096; --grip: #A08980; --red: #FF8A5B; --red-hi: #FFB08F; --on-red: #2A0E02; --amber: #F2C46D; --shadow: #000000aa; --shadow-lg: #000000aa; --scrim: #000000bb;
+}
+:root[data-theme="paper"] {
+  --scheme: light; --ground: #F6F4EF; --surface: #FFFFFF; --raised: #EEEBE3; --inset: #FFFFFF; --hair: #E2DED4; --border: #D6D1C5; --text: #22211E; --muted: #5E5A52; --grip: #6E6961; --red: #9A5B00; --red-hi: #B87514; --on-red: #FFFFFF; --amber: #9A5B00; --shadow: #3A321E2e; --shadow-lg: #3A321E2e; --scrim: #22211E66; --av0-bg: #F6D5DB; --av0-fg: #7A2E3B; --av1-bg: #DCDAF5; --av1-fg: #3E3A7A; --av2-bg: #D3EBDD; --av2-fg: #245039; --av3-bg: #F3E6C4; --av3-fg: #6A5014; --av4-bg: #EBD8EE; --av4-fg: #5E2F66;
+}
+:root[data-theme="mono"] {
+  --scheme: dark; --ground: #0E0E0E; --surface: #161616; --raised: #1F1F1F; --inset: #0E0E0E; --hair: #262626; --border: #2E2E2E; --text: #EEEEEE; --muted: #A3A3A3; --grip: #8C8C8C; --red: #F2F2F2; --red-hi: #FFFFFF; --on-red: #111111; --amber: #E0E0E0; --shadow: #000000aa; --shadow-lg: #000000aa; --scrim: #000000bb;
+}

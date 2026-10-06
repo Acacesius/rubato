@@ -38,6 +38,8 @@ function fillCode(v, from = 0) {
 const typedCode = () => boxes.map((b) => b.value).join("");
 $("name-input").value = myName;
 $("join-arrow").innerHTML = icon("arrow");
+$("theme-btn").innerHTML = icon("palette");
+$("theme-btn").addEventListener("click", openThemes);
 
 // "On the speaker now" teaser. Only shown once we have a code to ask with (QR link or a remembered one).
 function teaser(data) {

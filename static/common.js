@@ -86,13 +86,14 @@ const P = {
   external: '<path d="M14 4h6v6M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
   unplug: '<path d="M9 7V3M15 7V3M7 7h10v4a5 5 0 0 1-10 0z"/><path d="M12 16v5"/><path d="M3 3l18 18"/>',
   heart: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1.1 0 1.8-.8 1.8-1.7 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.2 0-.9.8-1.7 1.7-1.7H16a5 5 0 0 0 5-5c0-4-4-7.2-9-7.2z"/><circle cx="7.5" cy="11" r="1.2" fill="currentColor"/><circle cx="10.5" cy="7" r="1.2" fill="currentColor"/><circle cx="15" cy="7.5" r="1.2" fill="currentColor"/>',
   user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
 };
 const icon = (name) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${P[name]}</svg>`;
 const ic = (name) => el("span", { html: icon(name), style: "display:contents" });
 
 // ---- avatars: initials on one of five fixed color pairs, chosen by a stable hash of the name
-const PAIRS = [["#3A2428", "#FFB3BE"], ["#2B2A3A", "#C3BFF2"], ["#23332D", "#A9DDBF"], ["#3A3322", "#F2D79B"], ["#2E2430", "#E2B8E8"]];
+const PAIRS = [0, 1, 2, 3, 4].map((i) => [`var(--av${i}-bg)`, `var(--av${i}-fg)`]); // colours are theme tokens (rubato.css)
 function hashOf(s) {
   let h = 0;
   for (const c of String(s || "")) h = (h * 31 + c.codePointAt(0)) >>> 0;
@@ -229,9 +230,9 @@ function dial() {
   svg.setAttribute("aria-hidden", "true");
   const mk = (attrs) => { const p = document.createElementNS(ns, "path"); for (const [k, v] of Object.entries(attrs)) p.setAttribute(k, v); svg.append(p); return p; };
   // 270° sweep from bottom-left (135°) clockwise to bottom-right (405°)
-  mk({ d: arc(135, 405), fill: "none", stroke: "#2A2022", "stroke-width": 8, "stroke-linecap": "round" });
-  const val = mk({ d: arc(135, 405), fill: "none", stroke: "#F2506A", "stroke-width": 8, "stroke-linecap": "round", pathLength: 100, "stroke-dasharray": "0 100" });
-  const tick = mk({ fill: "none", stroke: "#F4B544", "stroke-width": 3, "stroke-linecap": "round" });
+  mk({ d: arc(135, 405), fill: "none", style: "stroke:var(--hair)", "stroke-width": 8, "stroke-linecap": "round" });
+  const val = mk({ d: arc(135, 405), fill: "none", style: "stroke:var(--red)", "stroke-width": 8, "stroke-linecap": "round", pathLength: 100, "stroke-dasharray": "0 100" });
+  const tick = mk({ fill: "none", style: "stroke:var(--amber)", "stroke-width": 3, "stroke-linecap": "round" });
   const num = el("b", { textContent: "0" }), capl = el("span", { textContent: "CAP 80" });
   const box = el("div", { class: "dial" }, svg, el("div", { class: "num" }, num, capl));
   return {
@@ -418,3 +419,48 @@ function seekableSpectrum(spec, post) {
   spec.bar.addEventListener("keydown", () => setTimeout(tick));
   return tick;
 }
+
+// ---- themes. A theme is only a set of CSS variable values (themes.css); the default is Rubidium.
+// Each viewer picks their own; it's kept in this browser (each page's <head> applies it before first paint).
+const THEMES = [
+  { id: "", label: "Rubidium", sw: ["#110D0E", "#F2506A", "#F4B544"] },
+  { id: "sakura", label: "Sakura", sw: ["#FBF3F5", "#C2406A", "#A8620F"] },
+  { id: "yozakura", label: "Night sakura", sw: ["#140F14", "#F49AC1", "#F4B544"] },
+  { id: "matcha", label: "Matcha", sw: ["#0F1410", "#A8D672", "#E8B04A"] },
+  { id: "lavender", label: "Lavender", sw: ["#12111A", "#B9A6F2", "#F4B544"] },
+  { id: "ocean", label: "Ocean", sw: ["#0B1218", "#4FD1C5", "#F4B544"] },
+  { id: "sunset", label: "Sunset", sw: ["#16100E", "#FF8A5B", "#F2C46D"] },
+  { id: "paper", label: "Paper", sw: ["#F6F4EF", "#9A5B00", "#22211E"] },
+  { id: "mono", label: "Mono", sw: ["#0E0E0E", "#F2F2F2", "#E0E0E0"] },
+];
+const THEME_KEY = "rubato.theme";
+function applyTheme(id) {
+  const root = document.documentElement;
+  if (id) root.dataset.theme = id; else delete root.dataset.theme;
+  try { if (id) localStorage.setItem(THEME_KEY, id); else localStorage.removeItem(THEME_KEY); } catch {}
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = getComputedStyle(root).getPropertyValue("--ground").trim();
+  document.querySelectorAll("#theme-modal .theme").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.id === (id || ""))));
+}
+function openThemes() {
+  let m = $("theme-modal");
+  if (!m) {
+    const close = el("button", { class: "iconbtn bare", html: icon("x"), ariaLabel: "Close", onclick: () => m.classList.add("hidden") });
+    m = el("div", { id: "theme-modal", class: "modal hidden", role: "dialog", ariaModal: "true", ariaLabelledby: "theme-h" },
+      el("div", { class: "modal-card theme-card" },
+        el("div", { class: "modal-head" }, el("h2", { class: "display", id: "theme-h", textContent: "Theme" }), close),
+        el("p", { class: "muted theme-note", textContent: "Just for you, on this device." }),
+        el("div", { class: "themes", role: "group", ariaLabel: "Themes" }, ...THEMES.map((t) =>
+          el("button", { class: "theme", ariaPressed: "false", onclick: () => applyTheme(t.id) },
+            el("span", { class: "sw", ariaHidden: "true" }, ...t.sw.map((c) => el("i", { style: `background:${c}` }))),
+            el("span", { class: "tn", textContent: t.label }))))));
+    m.addEventListener("click", (e) => e.target === m && m.classList.add("hidden"));
+    document.addEventListener("keydown", (e) => e.key === "Escape" && m.classList.add("hidden"));
+    document.body.append(m);
+    m.querySelectorAll(".theme").forEach((b, i) => (b.dataset.id = THEMES[i].id));
+  }
+  applyTheme(document.documentElement.dataset.theme || "");
+  m.classList.remove("hidden");
+  m.querySelector('.theme[aria-pressed="true"]').focus();
+}
+applyTheme(document.documentElement.dataset.theme || "");

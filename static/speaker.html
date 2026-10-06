@@ -11,6 +11,8 @@
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 -11 38 38'%3E%3Cpath d='M2 8 C4 2, 6 2, 8 8 S12 14, 15 8 S21 2, 25 8 S33 14, 36 8' fill='none' stroke='%23F2506A' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="preload" href="static/fonts/bricolage-grotesque-latin-opsz-wdth-wght.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="static/rubato.css">
+<link rel="stylesheet" href="static/themes.css">
+<script>try{var t=localStorage.getItem("rubato.theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
 <body>
 <div class="speaker">
@@ -18,6 +20,7 @@
     <span class="wordmark">rubato<svg viewBox="0 0 38 16" aria-hidden="true"><path d="M2 8 C4 2, 6 2, 8 8 S12 14, 15 8 S21 2, 25 8 S33 14, 36 8"/></svg></span>
     <div class="right">
       <span class="volcap" id="volcap"></span>
+      <button class="iconbtn bare" id="theme-btn" aria-label="Theme" title="Theme"></button>
       <span class="pill spill off" id="sp-pill" role="status"></span>
     </div>
   </header>

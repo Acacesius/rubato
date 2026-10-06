@@ -237,6 +237,31 @@ def main():
         check("artist panel: hides when the window narrows", lambda: expect(desk.locator("#artist")).to_be_hidden(timeout=3000))
         desk_ctx.close()
 
+        # Themes: picked per viewer, kept in the browser, colours only through CSS variables.
+        maya.click("nav.tabbar [data-tab=speaker]")
+        maya.click("#theme-btn")
+        maya.locator("#theme-modal .theme", has_text="Night sakura").click()
+        check("theme: applies at once and only for this viewer", lambda: (
+            expect(maya.locator("html")).to_have_attribute("data-theme", "yozakura"),
+            maya.wait_for_function("() => getComputedStyle(document.body).backgroundColor === 'rgb(20, 15, 20)'"),
+            expect(theo.locator("html")).not_to_have_attribute("data-theme", "yozakura")))
+        maya.keyboard.press("Escape")
+        maya.reload()
+        check("theme: still there after a reload", lambda: (
+            expect(maya.locator("html")).to_have_attribute("data-theme", "yozakura"),
+            expect(maya.locator("#room")).to_be_visible(timeout=10000)))
+        check("theme: the dial and avatars follow it", lambda: maya.wait_for_function(
+            """() => getComputedStyle(document.querySelector('.dial svg path:nth-child(2)')).stroke === 'rgb(244, 154, 193)'""", timeout=3000))
+        if a.shots:
+            for t in ("default", "sakura", "matcha", "paper", "mono"):
+                for pg in (maya, host, speaker):
+                    pg.evaluate(f"applyTheme({t!r} === 'default' ? '' : {t!r})")
+                maya.wait_for_timeout(500)
+                for nm, pg in (("guest", maya), ("host", host), ("speaker", speaker)):
+                    pg.screenshot(path=f"{a.shots}/{nm}-{t}.png")
+        for pg in (maya, host, speaker):
+            pg.evaluate("applyTheme('')")
+
         for c in (maya_ctx, theo_ctx, sp_ctx, host_ctx):
             c.close()
         browser.close()
