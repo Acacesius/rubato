@@ -189,6 +189,22 @@ def main():
         check("back: in the feed", lambda: (expect(host.locator("#feed")).to_contain_text("Maya went back to", timeout=5000),
                                             expect(host.locator("#feed")).to_contain_text("Maya restarted", timeout=5000)))
 
+        # Clear queue: host only (a guest's request is refused by the server), asks first, keeps the song.
+        status = maya.evaluate("""async () => (await fetch('api/host/clear', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code: state.code, sid: localStorage.getItem('rubato.sid') }) })).status""")
+        check("clear: a guest's request is refused (403)", lambda: status == 403 or fail(f"got {status}"))
+        playing = host.locator("#np-title").inner_text()
+        asked = []
+        host.once("dialog", lambda d: asked.append(d.message))
+        host.click("#clear-queue")
+        check("clear: asks first, empties the queue everywhere, the song keeps playing", lambda: (
+            asked or fail("no confirmation"),
+            expect(host.locator("#queue .trow")).to_have_count(0, timeout=5000),
+            expect(theo.locator("#queue .trow")).to_have_count(0, timeout=5000),
+            expect(host.locator("#np-title")).to_have_text(playing),
+            speaker.wait_for_function("() => !document.getElementById('audio').paused", timeout=3000)))
+        check("clear: in the feed", lambda: expect(host.locator("#feed")).to_contain_text("cleared the queue", timeout=5000))
+
         for c in (maya_ctx, theo_ctx, sp_ctx, host_ctx):
             c.close()
         browser.close()

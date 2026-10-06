@@ -90,6 +90,7 @@ function apply(s) {
   $("pause").setAttribute("aria-label", s.paused ? "Play" : "Pause");
 
   // queue
+  $("clear-queue").disabled = !s.queue.length;
   $("q-sub").textContent = `${s.queue.length} song${s.queue.length === 1 ? "" : "s"} · ${Math.round(s.queue.reduce((a, t) => a + (t.duration || 0), 0) / 60)} min`;
   // Rebuild the rows only when the queue (or the "cached" note) changed: patches keep an unchanged queue identical.
   const qkey = `${e.next_qid}|${e.next}`;
@@ -169,6 +170,13 @@ $("back").addEventListener("click", async () => {
   if (r.ok && (await r.json()).did === "restarted") toast("Restarted");
 });
 setInterval(() => $("back").setAttribute("aria-label", state && state.now && curPos() > 3 ? "Restart song" : "Previous song"), 1000);
+// Clear queue (host only, enforced by the server): upcoming songs go; now playing and history stay.
+$("clear-queue").addEventListener("click", async () => {
+  const n = state ? state.queue.length : 0;
+  if (!n || !confirm(`Clear the queue? This removes ${n === 1 ? "the 1 upcoming song" : `all ${n} upcoming songs`}. The current song keeps playing.`)) return;
+  const r = await post("api/host/clear");
+  toast(r.ok ? `Cleared ${n} song${n === 1 ? "" : "s"}` : "Couldn't clear the queue.");
+});
 $("radio-btn").addEventListener("click", () => state && post("api/host/radio", { on: !state.radio }));
 
 // volume + cap sliders: send while dragging (throttled) and on release

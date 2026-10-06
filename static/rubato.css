@@ -300,6 +300,10 @@ nav.tabbar button[aria-current=page] { color: var(--red); }
 .slider .lab .v.amber { color: var(--amber); }
 .slider .hint { font-size: 12px; color: var(--muted); margin-top: -4px; }
 .btnrow { margin-top: 14px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.head-r { display: inline-flex; align-items: baseline; gap: 14px; }
+/* small text button with a full 44px hit area that doesn't grow the row */
+.linkbtn { margin: -13px -10px; padding: 13px 10px; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); border-radius: 10px; }
+.linkbtn:hover:not(:disabled) { color: var(--red-hi); }
 .erow { min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--hair); font-size: 14px; color: var(--muted); }
 .erow .v { font-family: var(--mono); font-size: 13px; color: var(--text); text-align: right; }
 .erow .v.ok { color: var(--text); } .erow .v.bad { color: var(--red-hi); }

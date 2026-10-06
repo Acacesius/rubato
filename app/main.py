@@ -1153,6 +1153,23 @@ async def host_radio(body: OnBody, request: Request):
     return {"ok": True}
 
 
+@app.post("/api/host/clear")
+async def host_clear(request: Request):
+    """Remove every upcoming song people queued. The current song keeps playing, the play history
+    (Back) stays, and so do the radio picks, which play next as with any empty queue. Host key only:
+    a guest's request is refused here, not just by a hidden button."""
+    require_host(request)
+    async with room.lock:
+        n = len(room.queue)
+        room.queue.clear()
+        room.record(host_actor(), "clear", f"cleared the queue ({n} song{'' if n == 1 else 's'})")
+        room.prefetch_next()
+        if room.radio and room.now and not room.auto:
+            asyncio.create_task(room.refill_auto_and_broadcast(room.now))
+    await room.broadcast()
+    return {"ok": True, "removed": n}
+
+
 @app.post("/api/host/name")
 async def host_set_name(body: NameBody, request: Request):
     require_host(request)

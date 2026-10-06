@@ -161,3 +161,17 @@ def test_back_restarts_then_goes_to_previous_even_after_skip(client):
     assert post(client, "/api/back", sid, qid="old").json() == {"ok": False, "stale": True}
     assert post(client, "/api/back", qid=room.now["qid"]).status_code == 401
     assert room.snapshot()["can_back"] is False   # first song again: nothing before it
+
+
+def test_clear_queue_is_host_only_and_keeps_now_and_history(client):
+    sid = join(client)
+    post(client, "/api/add", sid, videoIds=ids(5))
+    room = main.room
+    post(client, "/api/skip", sid, qid=room.now["qid"])
+    now, history = room.now, list(room.back_stack)
+    assert post(client, "/api/host/clear", sid).status_code == 403          # a guest, room code and all
+    assert client.post("/api/host/clear", headers={"X-Host-Key": "wrong"}).status_code == 403
+    assert len(room.queue) == 3
+    assert client.post("/api/host/clear", headers=H).json() == {"ok": True, "removed": 3}
+    assert room.queue == [] and room.now is now and list(room.back_stack) == history
+    assert room.feed[-1]["kind"] == "clear" and room.feed[-1]["text"] == "cleared the queue (3 songs)"
