@@ -9,7 +9,7 @@ let key = localStorage.getItem("rubato.speakerkey") || "";
 
 const audio = $("audio");
 let ws = null, token = null, state = null;
-let loadedQid = null, resumeAt = 0, retried = null;
+let loadedQid = null, resumeAt = 0, retried = null, seekSeen = null;
 let unlocked = false, buffering = false, stopped = false;
 let ctx = null, gain = null, wakeLock = null;
 
@@ -136,10 +136,17 @@ function apply(s) {
   if (n.qid !== loadedQid) {
     loadedQid = n.qid;
     retried = null;
-    resumeAt = s.position > 1 ? s.position : 0; // resume where this track last was (reconnect / takeover)
+    seekSeen = s.seek.id; // the position below already includes any seek so far
+    resumeAt = s.position > 1 ? s.position : 0; // resume where this track last was (reconnect / takeover / seek)
     audio.src = `stream/${n.videoId}?t=${encodeURIComponent(token)}`;
     if (resumeAt) audio.addEventListener("loadedmetadata", () => { audio.currentTime = resumeAt; }, { once: true });
     buffering = !s.paused;
+  } else if (s.seek.id !== seekSeen) {
+    // Someone moved the time: jump there. The next heartbeat says we did (seek id), and the server
+    // ignores our old position until then.
+    seekSeen = s.seek.id;
+    if (audio.readyState > 0) audio.currentTime = s.seek.pos;
+    else { resumeAt = s.seek.pos; audio.addEventListener("loadedmetadata", () => { audio.currentTime = resumeAt; }, { once: true }); }
   }
   if (s.paused && !audio.paused) audio.pause();
   else if (!s.paused && audio.paused) audio.play().catch((err) => { if (err.name === "NotAllowedError") lockAgain(); });
@@ -154,7 +161,7 @@ function lockAgain() {
 function send(m) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(m)); }
 function beat() {
   send({ type: "beat", qid: loadedQid, pos: audio.currentTime || 0, paused: audio.paused, buffering, locked: !unlocked,
-         volume: state ? state.volume : null });
+         volume: state ? state.volume : null, seek: seekSeen });
 }
 // The heartbeat clock runs in a Worker: Chrome cuts timers in a hidden, silent
 // tab to about once a minute, which would make an idle speaker look dead.

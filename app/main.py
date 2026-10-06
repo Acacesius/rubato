@@ -18,6 +18,7 @@ import contextlib
 import io
 import json
 import logging
+import math
 import os
 import re
 import secrets
@@ -144,6 +145,8 @@ class Room:
         self.pos = 0.0                # last position the speaker reported for `now`
         self.pos_at = time.monotonic()
         self.playing = False          # the speaker says audio is actually coming out
+        self.seek_id = 0              # bumped on every seek; the speaker echoes the one it has applied
+        self.seek_pos = 0.0           # where that seek went
         self.volume = 60
         self.cap = 80
         self.radio = True
@@ -273,6 +276,7 @@ class Room:
             "position": round(self.position(), 2),
             "playing": self.status() == "playing" and self.playing,
             "paused": self.paused,
+            "seek": {"id": self.seek_id, "pos": round(self.seek_pos, 2)},  # the speaker jumps when the id changes
             "volume": self.volume,
             "cap": self.cap,
             "auto": [self.public(t) for t in self.auto],
@@ -337,6 +341,13 @@ class Room:
     async def broadcast_beat(self):
         msg = self.beat_msg()
         await self._send_all("beat", [(ws, msg) for ws in list(self.guests) + list(self.hosts)])
+
+    def seek_to(self, pos: float):
+        """Move the current track to `pos` seconds. Caller holds self.lock. The speaker sees the new
+        seek id in the next state and jumps; until its heartbeat echoes that id, its reports from the
+        old position are ignored (see speaker_msg), so progress bars don't snap back."""
+        self.pos, self.pos_at, self.seek_pos = pos, time.monotonic(), pos
+        self.seek_id += 1
 
     # ---- attribution
     def record(self, actor: Actor, kind: str, text: str):
@@ -882,6 +893,10 @@ class PauseBody(Act):
     paused: bool
 
 
+class SeekBody(QidBody):
+    position: float
+
+
 class VolumeBody(Act):
     volume: int
 
@@ -981,6 +996,30 @@ async def pause(body: PauseBody, request: Request):
             room.record(actor, "pause" if body.paused else "play", "paused" if body.paused else "pressed play")
     await room.broadcast()
     return {"ok": True}
+
+
+def mmss(secs: float) -> str:
+    return f"{int(secs) // 60}:{int(secs) % 60:02d}"
+
+
+@app.post("/api/seek")
+async def seek(body: SeekBody, request: Request):
+    """Jump to a position in the current track. Same rights as pause and skip (anyone in the room),
+    and it goes in the feed. The server sets the position; the speaker and every remote follow."""
+    actor = control(request, body)
+    if not math.isfinite(body.position):
+        raise HTTPException(400, "bad position")
+    async with room.lock:
+        if not room.now or room.now["qid"] != body.qid:
+            return {"ok": False, "stale": True}
+        if room.loading:
+            raise HTTPException(409, "The song is still loading.")
+        dur = room.now.get("duration") or 0
+        pos = max(0.0, min(body.position, dur) if dur else body.position)
+        room.seek_to(pos)
+        room.record(actor, "seek", f"jumped to {mmss(pos)} in {room.now['title']}")
+    await room.broadcast()
+    return {"ok": True, "position": pos}
 
 
 @app.post("/api/skip")
@@ -1382,7 +1421,7 @@ async def host_ws(ws: WebSocket):
 async def speaker_ws(ws: WebSocket):
     """The speaker. The newest device with the key takes over; the old one is told and dropped.
 
-    In:  {"type":"beat", qid, pos, paused, volume, buffering, locked}  ~1/s
+    In:  {"type":"beat", qid, pos, paused, volume, buffering, locked, seek}  ~1/s  (seek: last seek id applied)
          {"type":"ended", qid} / {"type":"error", qid, detail} / {"type":"name", device}
     Out: {"type":"hello", token}, state snapshots, {"type":"taken_over"}.
     """
@@ -1430,11 +1469,15 @@ async def speaker_msg(sp: Speaker, m: dict):
         sp.buffering = bool(m.get("buffering"))
         with contextlib.suppress(TypeError, ValueError):
             sp.volume = int(m.get("volume"))
-        if room.now and qid == room.now["qid"]:
+        # A beat from before the speaker applied the latest seek still carries the old position.
+        caught_up = "seek" not in m or m.get("seek") == room.seek_id
+        if room.now and qid == room.now["qid"] and caught_up:
             with contextlib.suppress(TypeError, ValueError):
                 room.pos = max(0.0, float(m.get("pos")))
                 room.pos_at = sp.last_beat
             room.playing = not m.get("paused") and not sp.buffering and not sp.locked
+        elif room.now and qid == room.now["qid"]:
+            pass  # mid-seek: keep the position the server set
         else:
             room.playing = False
         if was != (sp.online, sp.locked, sp.buffering, room.playing):

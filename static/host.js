@@ -35,6 +35,7 @@ $("mini-cone").append(miniCone);
 const spec = spectrum(40);
 $("prog-slot").replaceWith(spec.el);
 spec.el.classList.add("prog");
+const tickProgress = seekableSpectrum(spec, post);
 
 function apply(s) {
   const prev = state;
@@ -277,7 +278,7 @@ $("add-q").addEventListener("focus", () => $("add-results").children.length && $
 // progress + last beat
 setInterval(() => {
   if (!state) return;
-  spec.set(state.now ? curPos() : 0, state.now ? state.now.duration || 0 : 0);
+  tickProgress();
   const sp = state.host.speaker;
   $("sp-beat").textContent = !sp.connected ? "" : lastBeatAt == null ? "waiting for first beat" : `last beat ${Math.max(0, (performance.now() - lastBeatAt) / 1000).toFixed(0)} s ago`;
 }, 250);

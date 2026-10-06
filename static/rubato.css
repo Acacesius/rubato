@@ -117,6 +117,11 @@ input[type=range].amber { --tc: var(--amber); accent-color: var(--amber); }
 .spectrum i.on { background: var(--line-past); }
 .spectrum i.b { width: 2px; }
 .spectrum .head { position: absolute; top: 0; bottom: 0; left: 0; width: 3px; margin-left: -1.5px; background: var(--red); box-shadow: 0 0 10px var(--red), 0 0 2px var(--red); }
+/* seekable (seekBar() in common.js): click, drag or arrow keys */
+.spectrum[role=slider] { cursor: pointer; touch-action: none; }
+.spectrum[role=slider][aria-disabled=true] { cursor: default; }
+.spectrum.scrubbing .head, .spectrum[role=slider]:hover .head { width: 4px; margin-left: -2px; }
+.spectrum[role=slider]:focus-visible { outline: 2px solid var(--text); outline-offset: 3px; }
 .spec-times { margin-top: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
 .spec-times .mid { color: var(--grip); letter-spacing: .08em; }
 

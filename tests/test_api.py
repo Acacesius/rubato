@@ -103,3 +103,38 @@ def test_concurrent_drags_never_corrupt_the_queue(client):
         codes = list(ex.map(drag, range(60)))
     assert set(codes) <= {200, 409}
     assert sorted(t["qid"] for t in main.room.queue) == before
+
+
+def test_seek_clamps_is_attributed_and_ignores_old_speaker_beats(client):
+    sid = join(client)
+    post(client, "/api/add", sid, videoIds=ids(2))
+    room = main.room
+    qid = room.now["qid"]
+    assert post(client, "/api/seek", sid, qid=qid, position=30).status_code == 409   # still loading
+    room.loading = False
+    r = post(client, "/api/seek", sid, qid=qid, position=95.5).json()
+    assert r == {"ok": True, "position": 95.5} and room.pos == 95.5
+    assert room.snapshot()["seek"] == {"id": 1, "pos": 95.5}
+    assert post(client, "/api/seek", sid, qid=qid, position=9999).json()["position"] == 200   # track length
+    assert post(client, "/api/seek", sid, qid=qid, position=-5).json()["position"] == 0
+    assert post(client, "/api/seek", sid, qid="stale", position=10).json() == {"ok": False, "stale": True}
+    assert post(client, "/api/seek", qid=qid, position=10).status_code == 401   # needs a session
+    assert room.feed[-1]["kind"] == "seek" and room.feed[-1]["text"].startswith("jumped to 0:00")
+    post(client, "/api/seek", headers=H, qid=qid, position=120)
+    assert room.feed[-1]["who"].endswith("(host)")
+    # The speaker hasn't applied seek #4 yet: its beat from the old spot doesn't move the position.
+    with client.websocket_connect("/ws/speaker") as sp:
+        sp.send_json({"type": "auth", "key": "test-speaker-key"})
+        sp.receive_json()
+        sp.send_json({"type": "beat", "qid": qid, "pos": 7.0, "paused": False, "seek": room.seek_id - 1})
+        sp.send_json({"type": "name", "device": "x"})   # a round trip, so the beat has been handled
+        while sp.receive_json().get("type") not in ("state", "patch"):
+            pass
+        assert abs(room.pos - 120) < 0.01
+        sp.send_json({"type": "beat", "qid": qid, "pos": 121.0, "paused": False, "seek": room.seek_id})
+        sp.send_json({"type": "name", "device": "y"})
+        for _ in range(3):
+            if abs(room.pos - 121) < 0.01:
+                break
+            sp.receive_json()
+        assert abs(room.pos - 121) < 0.01

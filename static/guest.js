@@ -230,7 +230,10 @@ function songRow(t) {
 }
 
 // progress, between heartbeats
-setInterval(() => { if (state && state.now) spec.set(curPos(), state.now.duration || 0); else spec.set(0, 0); }, 250);
+// Seek: drag or click the spectral bar, or arrow keys on it. Same rights as pause and skip; the
+// server sets the position, the speaker jumps there, and the feed says who.
+const tickProgress = seekableSpectrum(spec, (path, body) => api(path, body));
+setInterval(tickProgress, 250);
 
 // ---- room controls
 $("pause").addEventListener("click", () => state && state.now && api("api/pause", { paused: !state.paused }));

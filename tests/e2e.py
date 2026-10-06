@@ -137,6 +137,38 @@ def main():
             host.wait_for_function("t => document.activeElement.classList.contains('grip') && document.activeElement.closest('.trow').querySelector('.t').textContent === t", arg=second, timeout=3000)))
         check("hands on it: the drags are attributed", lambda: expect(host.locator("#feed")).to_contain_text("Theo moved", timeout=5000))
 
+        # Seek: Maya scrubs the spectral bar by touch; nothing is sent until she lets go, then one seek
+        # moves the room, the speaker jumps there, and the feed says who. The host steps with arrow keys.
+        maya.click("nav.tabbar [data-tab=speaker]")
+        maya.wait_for_function("() => state.status === 'playing' && state.now.duration", timeout=20000)
+        seeks = []
+        maya.on("request", lambda r: "/api/seek" in r.url and seeks.append(r.url))
+        bar = maya.locator("#prog-slot .spectrum").bounding_box()
+        cy = bar["y"] + bar["height"] / 2
+        cdp_m = maya_ctx.new_cdp_session(maya)
+        cdp_m.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": bar["x"] + bar["width"] * 0.1, "y": cy}]})
+        for k in range(1, 9):
+            cdp_m.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": bar["x"] + bar["width"] * (0.1 + 0.6 * k / 8), "y": cy}]})
+            maya.wait_for_timeout(40)
+        sent_while_dragging = len(seeks)
+        preview = maya.evaluate("() => document.querySelector('#prog-slot .spec-times').firstChild.textContent")
+        cdp_m.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+        check("seek by touch: target time shows while dragging, nothing sent until release, then one seek", lambda: (
+            sent_while_dragging == 0 or fail(f"{sent_while_dragging} sent mid-drag"),
+            preview not in ("0:00", "0:01", "0:02") or fail(f"preview showed {preview}"),
+            maya.wait_for_timeout(800), len(seeks) == 1 or fail(f"{len(seeks)} seeks")))
+        check("seek: the speaker jumps there (~70%)", lambda: speaker.wait_for_function(
+            "() => { const a = document.getElementById('audio'); return a.currentTime > a.duration * 0.6 && a.currentTime < a.duration * 0.85; }", timeout=5000))
+        check("seek: the host's bar follows", lambda: host.wait_for_function(
+            "() => curPos() > state.now.duration * 0.6", timeout=5000))
+        check("seek: in the feed", lambda: expect(host.locator("#feed")).to_contain_text("Maya jumped to", timeout=5000))
+        p0 = speaker.evaluate("() => document.getElementById('audio').currentTime")
+        host.locator(".np-ctl .spectrum").focus()
+        for _ in range(2):
+            host.keyboard.press("ArrowLeft")
+        check("seek by keyboard: two ArrowLefts = one jump back ~10 s", lambda: speaker.wait_for_function(
+            "p0 => { const t = document.getElementById('audio').currentTime; return t < p0 - 6 && t > p0 - 13; }", arg=p0, timeout=5000))
+
         for c in (maya_ctx, theo_ctx, sp_ctx, host_ctx):
             c.close()
         browser.close()
