@@ -34,6 +34,7 @@ from pydantic import BaseModel
 
 from . import cookies as cookiejar
 from . import setup as setupstate
+from .netstats import net
 from .media import COOKIES, PROBE_VIDEO_ID, Resolver, _thumb, make_ytmusic, probe_account, song_to_track, to_track
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -285,11 +286,22 @@ class Room:
                 "playing": self.status() == "playing" and self.playing}
 
     # ---- broadcasting
-    async def _send(self, ws: WebSocket, msg: dict):
+    @staticmethod
+    async def _send_text(ws: WebSocket, text: str):
         try:
-            await ws.send_json(msg)
+            await ws.send_text(text)
         except Exception:
             pass  # disconnect handler cleans up
+
+    async def _send(self, ws: WebSocket, msg: dict):
+        text = json.dumps(msg, separators=(",", ":"))
+        net.push(msg.get("type", "?"), text, 1)
+        await self._send_text(ws, text)
+
+    async def _send_all(self, kind: str, targets: list[tuple[WebSocket, dict]]):
+        texts = [(ws, json.dumps(m, separators=(",", ":"))) for ws, m in targets]
+        net.push_batch(kind, [t for _, t in texts])
+        await asyncio.gather(*(self._send_text(ws, t) for ws, t in texts))
 
     async def broadcast(self):
         guest = self.snapshot()
@@ -299,12 +311,11 @@ class Room:
             targets += [(ws, host) for ws in list(self.hosts)]
         if self.speaker:
             targets.append((self.speaker.ws, guest))
-        await asyncio.gather(*(self._send(ws, m) for ws, m in targets))
+        await self._send_all("state", targets)
 
     async def broadcast_beat(self):
         msg = self.beat_msg()
-        targets = list(self.guests) + list(self.hosts)
-        await asyncio.gather(*(self._send(ws, msg) for ws in targets))
+        await self._send_all("beat", [(ws, msg) for ws in list(self.guests) + list(self.hosts)])
 
     # ---- attribution
     def record(self, actor: Actor, kind: str, text: str):
@@ -1046,6 +1057,13 @@ async def host_disconnect_speaker(request: Request):
     require_host(request)
     await room.drop_speaker(4004, "disconnected by the host", {"type": "disconnected"})
     return {"ok": True}
+
+
+@app.get("/api/host/net")
+async def host_net(request: Request):
+    """Network totals since start: pushes to clients, fetches from YouTube, peak concurrency and bandwidth."""
+    require_host(request)
+    return net.snapshot()
 
 
 @app.post("/api/new-session")

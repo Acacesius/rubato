@@ -15,6 +15,7 @@ import io
 import math
 import os
 import struct
+import time
 import wave
 import zlib
 
@@ -48,7 +49,52 @@ async def _download(self, video_id: str):
     return media.Media(data, len(data), "audio/wav", SECONDS)
 
 
-media.Resolver._download = _download
+def fake_upstream(size: int) -> int:
+    """FAKE_UPSTREAM=1 (tests/netbench.py): keep the real download path (prefetch, RAM cache, network
+    accounting) and fake only YouTube: yt-dlp "resolves" in a second to a local server that serves
+    `size` bytes per track (a tone, padded) with Range support. Returns the port."""
+    import http.server
+    import socketserver
+    import threading
+
+    import functools
+    body_of = functools.lru_cache(8)(lambda vid: tone(vid).ljust(size, b"\0"))
+
+    class Upstream(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"  # keep-alive, like googlevideo
+
+        def do_GET(self):
+            body = body_of(self.path.split("?")[0].strip("/"))
+            start, end = 0, size - 1
+            if (r := self.headers.get("Range", "")).startswith("bytes="):
+                a, b = r[6:].split("-")
+                start, end = int(a or 0), min(int(b or size - 1), size - 1)
+            self.send_response(206 if r else 200)
+            self.send_header("Content-Length", str(end - start + 1))
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+            self.end_headers()
+            self.wfile.write(body[start:end + 1])
+
+        def log_message(self, *a):
+            pass
+
+    srv = socketserver.ThreadingTCPServer(("127.0.0.1", 0), Upstream)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    port = srv.server_address[1]
+
+    def extract(video_id):
+        time.sleep(1.0)  # yt-dlp takes a few seconds per lookup in real life
+        return {"url": f"http://127.0.0.1:{port}/{video_id}?clen={size}&expire={int(time.time()) + 3600}&dur={SECONDS}",
+                "ext": "wav", "format_id": "0", "acodec": "pcm", "abr": 352}
+
+    media._extract = extract
+    return port
+
+
+if os.environ.get("FAKE_UPSTREAM"):
+    fake_upstream(int(os.environ.get("FAKE_BYTES", str(7 * 1024 * 1024))))
+else:
+    media.Resolver._download = _download
 if os.environ.get("FAKE_NO_ART"):  # screenshots: no real album art, the UI's initials tiles instead
     media._thumb = lambda thumbs: None
 media.Resolver.cookie_health = lambda self: "valid"

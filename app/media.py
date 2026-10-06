@@ -19,6 +19,7 @@ from yt_dlp import YoutubeDL
 from ytmusicapi import OAuthCredentials, YTMusic
 
 from . import cookies as cookiejar
+from .netstats import net
 
 log = logging.getLogger("rubato.media")
 
@@ -48,13 +49,13 @@ def make_ytmusic() -> YTMusic:
         # Pass contents, not the path: with a path ytmusicapi writes refreshed
         # tokens back to the file, and /config is mounted read-only.
         with open(OAUTH_AUTH) as f:
-            return YTMusic(f.read().strip(), oauth_credentials=creds)
+            return net.instrument(YTMusic(f.read().strip(), oauth_credentials=creds))
     if os.path.exists(BROWSER_AUTH):
         log.info("ytmusicapi: using browser auth from %s", BROWSER_AUTH)
         with open(BROWSER_AUTH) as f:
-            return YTMusic(f.read().strip())
+            return net.instrument(YTMusic(f.read().strip()))
     log.info("ytmusicapi: no auth file in %s, running unauthenticated", CONFIG_DIR)
-    return YTMusic()
+    return net.instrument(YTMusic())
 
 
 def _thumb(thumbs) -> str | None:
@@ -221,7 +222,8 @@ class Resolver:
                 return r
             t0 = time.monotonic()
             try:
-                info = await asyncio.to_thread(_extract, video_id)
+                with net.fetch("resolve", video_id):
+                    info = await asyncio.to_thread(_extract, video_id)
             except Exception as e:
                 if "confirm you" in str(e) and "not a bot" in str(e):
                     self.bot_check = True
@@ -253,6 +255,12 @@ class Resolver:
 
     async def iter_range(self, video_id: str, start: int, end: int):
         """Yield bytes [start, end] from upstream, re-resolving once on 403/expiry."""
+        with net.fetch("audio", f"{video_id} bytes {start}-{end}") as f:
+            async for chunk in self._iter_range(video_id, start, end):
+                f.got(len(chunk))
+                yield chunk
+
+    async def _iter_range(self, video_id: str, start: int, end: int):
         pos, retried = start, False
         while pos <= end:
             r = await self.get(video_id)
