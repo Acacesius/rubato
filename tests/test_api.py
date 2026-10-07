@@ -247,3 +247,15 @@ def test_tracks_carry_artist_id():
     from app.media import to_track
     t = to_track({"videoId": "x" * 11, "title": "T", "artists": [{"name": "A", "id": "UC" + "c" * 22}]})
     assert t["artistId"] == "UC" + "c" * 22
+
+
+def test_access_logs_mask_secrets_in_urls():
+    import logging
+    rec = logging.LogRecord("uvicorn.access", logging.INFO, "", 0, '%s - "%s %s HTTP/%s" %d',
+                            ("1.2.3.4:5", "GET", "/stream/abc?t=STREAMTOKEN", "1.1", 206), None)
+    main.RedactSecrets().filter(rec)
+    assert "STREAMTOKEN" not in rec.getMessage() and "t=***" in rec.getMessage()
+    rec = logging.LogRecord("uvicorn.access", logging.INFO, "", 0, '%s - "%s %s HTTP/%s" %d',
+                            ("1.2.3.4:5", "GET", "/api/search?q=abba&kind=all&code=ABCDE", "1.1", 200), None)
+    main.RedactSecrets().filter(rec)
+    assert "ABCDE" not in rec.getMessage() and "q=abba" in rec.getMessage()

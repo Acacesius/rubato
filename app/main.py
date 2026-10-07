@@ -44,6 +44,21 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 log = logging.getLogger("rubato")
 logging.getLogger("httpx").setLevel(logging.WARNING)  # its INFO lines contain signed googlevideo URLs
 
+
+class RedactSecrets(logging.Filter):
+    """Access logs never show a secret from a URL: the speaker's stream token (?t=) and room codes
+    (?code=) are masked, as are ?key= and ?token= should an old link carry one."""
+    PARAM = re.compile(r"([?&](?:key|token|code|t)=)[^&\s\"]+")
+
+    def filter(self, record):
+        if isinstance(record.args, tuple):
+            record.args = tuple(self.PARAM.sub(r"\1***", a) if isinstance(a, str) else a for a in record.args)
+        return True
+
+
+for _name in ("uvicorn.access", "uvicorn.error"):  # uvicorn logs websocket handshakes on uvicorn.error
+    logging.getLogger(_name).addFilter(RedactSecrets())
+
 VERSION = "0.2.0"
 CONFIG_DIR = os.environ.get("CONFIG_DIR", "/app/config")
 ENV_PUBLIC_URL = os.environ.get("PUBLIC_URL", "").strip().rstrip("/")
